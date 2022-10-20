@@ -1,0 +1,15 @@
+python==3.7.13
+numpy
+pandas
+tqdm
+lightgbm
+scipy
+seaborn
+scikit-learn
+tensorflow
+keras
+hyperopt
+xgboost
+matplotlib
+japanize_matplotlib
+shap
