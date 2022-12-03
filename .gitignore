@@ -18,6 +18,5 @@ models/*
 notebooks/*
 !notebooks/.gitkeep
 .gsheet
-.bin
-.pt
-notebooks/*
+*.bin
+*.pt
