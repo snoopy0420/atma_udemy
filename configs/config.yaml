@@ -1,0 +1,9 @@
+SETTING:
+  MODEL_DIR_NAME: "../models/" # 学習結果の諸々を保存するディレクトリ
+  SUB_DIR_NAME: "../data/submission/" # sample提出ファイル保存ディレクトリ
+  SAMPLE_SUB_NAME: "sample_submission.csv" # sample_submissionファイルの名前
+  RAW_DATA_DIR_NAME: "../data/raw/" # オリジナルデータの格納先ディレクトリ
+  FEATURE_DIR_NAME: "../data/features/" # オリジナルデータ
+  FIGURE_DIR_NAME: "../data/figures/" # 図表の保存先ディレクトリ
+  TARGET: "mode_price" # 目的変数
+  REMOVE_COLS: ['mode_price',"amount","date"] # trainデータから削除するカラム
