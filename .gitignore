@@ -5,8 +5,8 @@
 code/Untitled.ipynb
 data/external/*
 !data/external/.gitkeep
-data/features/*
-!data/features/.gitkeep
+# data/features/*
+# !data/features/.gitkeep
 data/figures/*
 !data/figures/.gitkeep
 data/raw/*
