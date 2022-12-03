@@ -15,8 +15,8 @@ data/submission/*
 !data/submission/.gitkeep
 models/*
 !models/.gitkeep
-notebooks/*
-!notebooks/.gitkeep
+# notebooks/*
+# !notebooks/.gitkeep
 *.gsheet
 *.bin
 *.pt
