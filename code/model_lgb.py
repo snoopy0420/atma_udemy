@@ -78,6 +78,7 @@ class ModelLGB(Model):
         """カスタム評価関数（mape)
         """
         labels = dtrain.get_label()
+
         eval_result = Metric.my_metric(labels, preds)
 
         return "mape", eval_result, False

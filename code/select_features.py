@@ -9,7 +9,7 @@ from util import Logger
 
 import xgboost as xgb
 from runner import Runner
-from util import load_index_k_fold
+from util import Validation
 
 sys.path.append(os.pardir)
 sys.path.append('../..')
@@ -19,7 +19,7 @@ warnings.filterwarnings("ignore")
 
 CONFIG_FILE = '../configs/config.yaml'
 with open(CONFIG_FILE, encoding="utf-8") as file:
-    yml = yaml.load(file)
+    yml = yaml.safe_load(file)
 FEATURE_DIR_NAME = yml['SETTING']['FEATURE_DIR_NAME']  # 生成した特徴量の出力場所
 TARGET = yml['SETTING']['TARGET'] # 目的変数
 REMOVE_COLS = yml['SETTING']['REMOVE_COLS']
@@ -35,7 +35,8 @@ def select_by_xgb(train, test, n_splits=5, num_feat=50):
     # xgbパラメータを設定する
     params = {
         'booster': 'gbtree',
-        'objective': 'binary:logistic',
+        'objective': 'reg:pseudohubererror',
+        'eval_metric': 'mape',
         'eta': 0.1,
         'gamma': 0.0,
         'alpha': 0.0,
@@ -51,7 +52,7 @@ def select_by_xgb(train, test, n_splits=5, num_feat=50):
     gain_df = pd.DataFrame(index=train_x.columns) # gainの格納場所
     for i_fold in range(n_splits):
         # 学習データと検証データに分割
-        tr_idx, va_idx = load_index_k_fold(i_fold, train_x, n_splits=n_splits, random_state=42) # 分割indexを取得
+        tr_idx, va_idx = Validation.load_index_k_fold(i_fold, train_x, n_splits=n_splits, random_state=42) # 分割indexを取得
         tr_x, tr_y = train_x.iloc[tr_idx], train_y.iloc[tr_idx]
         va_x, va_y = train_x.iloc[va_idx], train_y.iloc[va_idx]
         dtrain = xgb.DMatrix(tr_x, label=tr_y)
@@ -84,8 +85,8 @@ def select_by_xgb(train, test, n_splits=5, num_feat=50):
 def main():
     
     # データの読み込み
-    train = pd.read_pickle(FEATURE_DIR_NAME + 'train.pkl')
-    test = pd.read_pickle(FEATURE_DIR_NAME + 'test.pkl')
+    train = pd.read_pickle(FEATURE_DIR_NAME + 'vs_train.pkl')
+    test = pd.read_pickle(FEATURE_DIR_NAME + 'vs_test.pkl')
     
     # 特徴量選択の実行
     train_select, test_select = select_by_xgb(train, test, n_splits=5, num_feat=50)

@@ -389,7 +389,7 @@ class Runner:
             # 学習データ全体で各カテゴリにおけるtargetの平均を計算
             target_mean = data_tmp.groupby(c)['target'].mean()
             va_x.loc[:, c] = va_x[c].map(target_mean)  # 置換
-            va_x = va_x.fillna(data_tmp["target"].mean()) # nanになってしまったところは平均値で埋める
+            # va_x = va_x.fillna(data_tmp["target"].mean()) # nanになってしまったところは平均値で埋める
 
             # 学習データ(tr_x)を変換
             tmp = np.repeat(np.nan, tr_x.shape[0]) # 変換後の値を格納する配列を準備
@@ -400,7 +400,7 @@ class Runner:
                 # 変換後の値を一時配列に格納
                 tmp[idx_2] = tr_x[c].iloc[idx_2].map(target_mean)
             tr_x.loc[:, c] = tmp# 置換
-            tr_x = tr_x.fillna(data_tmp["target"].mean()) # nanになってしまったところは平均値で埋める
+            # tr_x = tr_x.fillna(data_tmp["target"].mean()) # nanになってしまったところは平均値で埋める
 
         return tr_x, va_x
 

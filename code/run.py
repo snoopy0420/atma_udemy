@@ -126,8 +126,8 @@ def get_file_info():
     file_setting = {
         'feature_dir_name': FEATURE_DIR_NAME,   # 特徴量の読み込み先ディレクトリ
         'model_dir_name': MODEL_DIR_NAME,       # モデルの保存先ディレクトリ
-        'train_file_name': "train.pkl",          # 学習に使用するtrainファイル名
-        'test_file_name': 'test.pkl',            # 予測に使用するtestファイル名
+        'train_file_name': "vs_train.pkl",          # 学習に使用するtrainファイル名
+        'test_file_name': 'vs_test.pkl',            # 予測に使用するtestファイル名
     }
     return file_setting
 

@@ -40,6 +40,18 @@ def prep_price(df):
 
     return df
 
+def prep_label_encoding(df):
+
+    # カテゴリ変数のカラムを抽出
+    obj_cats = df.dtypes[df.dtypes=="object"].index
+
+    # categoryにキャスト
+    for cat in obj_cats:
+        le = LabelEncoder().fit(df[cat])
+        df[cat] = le.transform(df[cat])
+
+    return df
+
 
 
 
@@ -53,11 +65,14 @@ def main():
     print("train shape: ", train.shape)
     print("test shape: ", test.shape)
 
-    train = prep_price(train)
+    # 前処理
+    df = prep_label_encoding(df)
     
     # pickleファイルとして保存
-    train.to_pickle(FEATURE_DIR_NAME + 'train.pkl')
-    test.to_pickle(FEATURE_DIR_NAME + 'test.pkl')
+    vs_train = df.iloc[:len(train), :]
+    vs_test = df.iloc[len(train):, :]
+    vs_train.to_pickle(FEATURE_DIR_NAME + 'vs_train.pkl')
+    vs_test.to_pickle(FEATURE_DIR_NAME + 'vs_test.pkl')
 #     logger.info(f'train shape: {train.shape}, test shape, {test.shape}')
     
     # 生成した特徴量のリスト
