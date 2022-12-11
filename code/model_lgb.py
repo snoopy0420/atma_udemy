@@ -7,7 +7,7 @@ import japanize_matplotlib
 import shap
 import lightgbm as lgb
 from model import Model
-from util import Util
+from util import Util, Metric
 
 CONFIG_FILE = '../configs/config.yaml'
 with open(CONFIG_FILE, encoding="utf-8") as file:
@@ -24,9 +24,7 @@ class ModelLGB(Model):
 
         # データのセット
         dtrain = lgb.Dataset(tr_x, tr_y)
-        validation = va_x is not None
-        if validation:
-            dvalid = lgb.Dataset(va_x, va_y)
+        dvalid = lgb.Dataset(va_x, va_y)
 
         # ハイパーパラメータの設定
         params = dict(self.params)
@@ -34,38 +32,58 @@ class ModelLGB(Model):
         verbose_eval = params.pop('verbose_eval')
 
         # 学習
-        if validation:
-            evals_result = {}
-            early_stopping_rounds = params.pop('early_stopping_rounds')
-            self.model = lgb.train(
-                                params,
-                                dtrain,
-                                num_boost_round=num_round,
-                                valid_sets=(dtrain, dvalid),
-                                valid_names=("train", "eval"),
-                                early_stopping_rounds=early_stopping_rounds,
-                                verbose_eval=verbose_eval,
-                                evals_result=evals_result,
-                                )
-            model_array.append(self.model)
-            evals_array.append(evals_result)
-
-        else:
-            self.model = lgb.train(
-                                params,
-                                dtrain,
-                                # num_boost_round=num_round
-                                )
-            model_array.append(self.model)
+        evals_result = {}
+        early_stopping_rounds = params.pop('early_stopping_rounds')
+        self.model = lgb.train(
+                            params,
+                            dtrain,
+                            num_boost_round=num_round,
+                            valid_sets=(dtrain, dvalid),
+                            valid_names=("train", "eval"),
+                            early_stopping_rounds=early_stopping_rounds,
+                            verbose_eval=verbose_eval,
+                            evals_result=evals_result,
+                            feval=ModelLGB.mape,
+                            fobj=ModelLGB.fair,
+                            )
+        model_array.append(self.model)
+        evals_array.append(evals_result)
 
 
-    # shapを計算しないver
+    @staticmethod
+    def mape(self, preds: np.ndarray, dtrain: lgb.Dataset):
+        """カスタム評価関数（mape)
+        """
+        labels = dtrain.get_label()
+        eval_result = Metric.my_metric(labels, preds)
+
+        return "mape", eval_result, False
+
+    @staticmethod
+    def fair(self, preds: np.ndarray, dtrain: lgb.Dataset):
+        """カスタム評価関数（fair loss)
+        """
+        # 残差を取得
+        x = preds - dtrain.get_label()
+        # Fair関数のパラメータ
+        c = 1.0
+        # 勾配の式の分母
+        den = abs(x) + c
+        # 勾配
+        grad = c * x / den
+        # 二階微分値
+        hess = c * c / den ** 2
+
+        return grad, hess
+
+
     def predict(self, te_x):
         return self.model.predict(te_x, num_iteration=self.model.best_iteration)
 
 
-    # shapを計算するver うまくいかない
     def predict_and_shap(self, te_x, shap_sampling):
+        """shapを計算するver うまくいかない
+        """
         fold_importance = shap.TreeExplainer(self.model).shap_values(te_x[:shap_sampling])
         valid_prediticion = self.model.predict(te_x, num_iteration=self.model.best_iteration)
         return valid_prediticion, fold_importance
@@ -82,10 +100,15 @@ class ModelLGB(Model):
         self.model = Util.load(model_path)
 
 
+
+
+        
+
+
     @classmethod
-    def plot_learning_curve(self, run_name):
-        eval_metiric = "l1"
-        print(evals_array[0])
+    def plot_learning_curve(self, run_name, eval_metiric):
+
+
 
         # 学習過程の可視化、foldが４以上の時のみ
         fig, axes = plt.subplots(2, 2, figsize=(12,8))
@@ -94,8 +117,8 @@ class ModelLGB(Model):
         plt.title('Learning curve')
 
         for i, ax in enumerate(axes.ravel()):
-            ax.plot(evals_array[i]['train'][eval_metiric][10:], label="train")
-            ax.plot(evals_array[i]['eval'][eval_metiric][10:], label="valid")
+            ax.plot(evals_array[i]['train']['mape'][10:], label="train")
+            ax.plot(evals_array[i]['eval']['mape'][10:], label="valid")
             ax.set_xlabel('epoch')
             ax.set_ylabel(eval_metiric)
             ax.legend()
@@ -159,5 +182,6 @@ class ModelLGB(Model):
         ax1.grid(True)
         ax2.grid(False)
 
-        plt.savefig(FIGURE_DIR_NAME + run_name + '_fi_gain.png', dpi=300, bbox_inches="tight")
+        # 図を保存
+        plt.savefig(dir_name + run_name + '_fi_gain.png', dpi=300, bbox_inches="tight")
         plt.close()

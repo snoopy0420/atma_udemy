@@ -10,8 +10,8 @@ from model import Model
 from tqdm import tqdm, tqdm_notebook
 # from sklearn.metrics import mean_absolute_error
 from typing import Callable, List, Optional, Tuple, Union
-from util import Logger, Util, Threshold
-from util import Validation #load_index_k_fold, load_stratify_or_group_target, load_index_sk_fold, load_index_gk_fold, load_index_custom_ts_fold
+from util import Logger, Util
+from util import Validation
 from util import Metric
 from hyperopt import fmin, tpe, hp, STATUS_OK, Trials
 from sklearn.model_selection import KFold
@@ -40,7 +40,7 @@ class Runner:
                  run_setting: dict 
                  ): 
         
-
+        # 評価関数
         self.metrics = Metric.my_metric  
 
         self.run_name = run_name
@@ -86,6 +86,7 @@ class Runner:
             self.shap_values = np.zeros(self.train_x.shape)
 
     
+############## fold毎の学習　###########################################################
 
     def train_fold(self, i_fold: Union[int, str], metrics=None) -> Tuple[Model, Optional[np.array], Optional[np.array], Optional[float]]:
         """foldを指定して学習・評価を行う
@@ -101,64 +102,44 @@ class Runner:
         train_y = self.train_y.copy()
 
         # バリデーションさせて学習
-        validation = i_fold != 'all'
-        if validation:
-
-            # 学習データ・バリデーションデータのindexを取得
-            if self.cv_method == 'KFold':
-                tr_idx, va_idx = Validation.load_index_k_fold(i_fold, train_x, self.n_splits, self.shuffle, self.random_state)
-            # elif self.cv_method == 'StratifiedKFold':
-            #     tr_idx, va_idx = load_index_sk_fold(i_fold)
-            elif self.cv_method == 'GroupKFold':
-                tr_idx, va_idx = Validation.load_index_gk_fold(i_fold, train_x, self.cv_target_column, self.n_splits, self.shuffle, self.random_state)
-            # elif self.cv_method == 'StratifiedGroupKFold':
-            #     tr_idx, va_idx = self.load_index_sgk_fold(i_fold)
-            # elif self.cv_method == 'TrainTestSplit':
-            #     tr_idx, va_idx = self.load_index_train_test_split()
-            elif self.cv_method == 'CustomTimeSeriesSplitter':
-                tr_idx, va_idx = Validation.load_index_custom_ts_fold(i_fold, train_x)
-            else:
-                print('CVメソッドが正しくないため終了します')
-                sys.exit(0)
-            
-            # 学習データ・バリデーションデータをセットする
-            tr_x, tr_y = train_x.iloc[tr_idx], train_y.iloc[tr_idx]
-            va_x, va_y = train_x.iloc[va_idx], train_y.iloc[va_idx]
-
-            # target encoding
-            if self.target_enc:
-                tr_x, va_x = self.get_target_encoding(tr_x, tr_y, va_x, self.cat_cols) 
-
-            # 学習を行う
-            model = self.build_model(i_fold)
-            model.train(tr_x, tr_y, va_x, va_y)
-
-            # バリデーションデータへの予測・評価を行う
-            if self.calc_shap:
-                va_pred, self.shap_values[va_idx[:shap_sampling]] = model.predict_and_shap(va_x, shap_sampling)
-            else:
-                va_pred = model.predict(va_x)
-
-            score = metrics(va_y, va_pred)
-
-            # モデル、インデックス、予測値、評価を返す
-            return model, va_idx, va_pred, score
-        
-        # 学習データ全てで学習
+        # 学習データ・バリデーションデータのindexを取得
+        if self.cv_method == 'KFold':
+            tr_idx, va_idx = Validation.load_index_k_fold(i_fold, train_x, self.n_splits, self.shuffle, self.random_state)
         else:
-            model = self.build_model(i_fold)
-            model.train(train_x, train_y)
+            print('CVメソッドが正しくないため終了します')
+            sys.exit(0)
+        
+        # 学習データ・バリデーションデータをセットする
+        tr_x, tr_y = train_x.iloc[tr_idx], train_y.iloc[tr_idx]
+        va_x, va_y = train_x.iloc[va_idx], train_y.iloc[va_idx]
 
-            # モデルを返す
-            return model, None, None, None
+        # target encoding
+        if self.target_enc:
+            tr_x, va_x = self.get_target_encoding(tr_x, tr_y, va_x, self.cat_cols) 
+
+        # 学習を行う
+        model = self.build_model(i_fold)
+        model.train(tr_x, tr_y, va_x, va_y)
+
+        # バリデーションデータへの予測・評価を行う
+        if self.calc_shap:
+            va_pred, self.shap_values[va_idx[:shap_sampling]] = model.predict_and_shap(va_x, shap_sampling)
+        else:
+            va_pred = model.predict(va_x)
+
+        score = metrics(va_y, va_pred)
+
+        # モデル、インデックス、予測値、評価を返す
+        return model, va_idx, va_pred, score
 
 
-######### CVでの学習と予測 ##############################################
+######### CVでの学習 ######################################################################
     
     def run_train_cv(self) -> None:
         """クロスバリデーションでの学習・評価を行う
         学習・評価とともに、各foldのモデルの保存、スコアのログ出力についても行う
         """
+        # ログ
         self.logger.info(f'{self.run_name} - start training cv')
         if self.cv_method == 'GroupKFold':
             self.logger.info(f'{self.run_name} - cv method: {self.cv_method} - target: {self.cv_target_column}')
@@ -167,34 +148,35 @@ class Runner:
 
         scores = [] # 各foldのscoreを保存
         va_idxes = [] # 各foldのvalidationデータのindexを保存
-        preds = [] # 各foldの推論結果を保存
+        va_preds = [] # 各foldのバリデーションデータに対する予測値を保存
 
-        # 各foldで学習を行う、train_foldをn_splits回繰り返す
+        # fold毎の学習：train_foldをn_splits回繰り返す
         for i_fold in range(self.n_splits):
+
             # 学習を行う
             self.logger.info(f'{self.run_name} fold {i_fold} - start training')
-            model, va_idx, va_pred, score = self.train_fold(i_fold) # 学習
+            model, va_idx, va_pred, score = self.train_fold(i_fold) ##### 学習 ########
             self.logger.info(f'{self.run_name} fold {i_fold} - end training - score {score}')
 
             # モデルを保存する
             model.save_model(self.out_dir_name)
 
             # 結果を保持する
-            va_idxes.append(va_idx)
             scores.append(score)
-            preds.append(va_pred)
+            va_idxes.append(va_idx)
+            va_preds.append(va_pred)
+
+        self.logger.info(f'{self.run_name} - end training cv - score {np.mean(scores)}') # スコアを出力
 
         # 各foldの結果をまとめる
         va_idxes = np.concatenate(va_idxes)
         order = np.argsort(va_idxes)
-        preds = np.concatenate(preds, axis=0)
-        preds = preds[order]
-
-        self.logger.info(f'{self.run_name} - end training cv - score {np.mean(scores)}')
+        va_preds = np.concatenate(va_preds, axis=0)
+        va_preds = va_preds[order]
 
         # 学習データでの予測結果の保存
         if self.save_train_pred:
-            Util.dump_df_pickle(pd.DataFrame(preds), self.out_dir_name + f'{self.run_name}-train_preds.pkl')
+            Util.dump_df_pickle(pd.DataFrame(va_preds), self.out_dir_name + f'{self.run_name}-train_preds.pkl')
 
         # 評価結果の保存
         self.logger.result_scores(self.run_name, scores)
@@ -202,8 +184,10 @@ class Runner:
 
         # shap feature importanceデータの保存
         if self.calc_shap:
-            self.shap_feature_importance()
+            self.shap_feature_importance() # shap値の計算・可視化
 
+
+######### CVでの予測 ######################################################################
 
     def run_predict_cv(self) -> None:
         """クロスバリデーションで学習した各foldのモデルの平均により、テストデータの予測を行う
@@ -237,41 +221,6 @@ class Runner:
         self.logger.info(f'{self.run_name} - end prediction cv')
 
 
-######### 全学習データでの学習と予測 ##############################################
-
-## エラーを吐く場合はn_split=1で対応
-    
-    def run_train_all(self) -> None:
-        """学習データすべてで学習し、そのモデルを保存する"""
-        self.logger.info(f'{self.run_name} - start training all')
-
-        # 学習データ全てで学習を行う
-        i_fold = 'all'
-        model, _, _, _ = self.train_fold(i_fold)
-        model.save_model(self.out_dir_name)
-
-        self.logger.info(f'{self.run_name} - end training all')
-
-
-    def run_predict_all(self) -> None:
-        """学習データすべてで学習したモデルにより、テストデータの予測を行う
-        """
-        self.logger.info(f'{self.run_name} - start prediction all')
-
-        test_x = self.load_x_test()
-
-        # 学習データ全てで学習したモデルで予測を行う
-        i_fold = 'all'
-        model = self.build_model(i_fold)
-        model.load_model(self.out_dir_name)
-        pred = model.predict(test_x)
-
-        # 予測結果の保存
-        Util.dump(pred, f'../model/pred/{self.run_name}-test.pkl')
-
-        self.logger.info(f'{self.run_name} - end prediction all')
-
-
 ####### model utils ##################################################################
 
     def build_model(self, i_fold: Union[int, str]) -> Model:
@@ -279,9 +228,10 @@ class Runner:
         :param i_fold: foldの番号
         :return: モデルのインスタンス
         """
-        # ラン名、fold、モデルのクラスからモデルを作成する
+        # run名、i_fold、モデルのクラス名からモデルを作成する
         run_fold_name = f'{self.run_name}-fold{i_fold}'
-        return self.model_cls(run_fold_name, self.params)
+        model = self.model_cls(run_fold_name, self.params)
+        return model
 
 
     def load_x_train(self) -> pd.DataFrame:

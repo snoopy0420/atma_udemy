@@ -10,21 +10,19 @@ from model_lgb import ModelLGB
 from model_xgb import ModelXGB
 #from model_nn import ModelNN
 from runner import Runner
-from util import Submission, Util, Threshold
+from util import Submission, Util
 import pandas as pd
 import numpy as np
-from sklearn.metrics import f1_score
-from scipy.optimize import minimize
 
 
-# tensorflowの警告抑制
-import os
-os.environ['HDF5_DISABLE_VERSION_CHECK']='1'
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
-import tensorflow as tf
-tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-warnings.filterwarnings("ignore")
-warnings.simplefilter('ignore')
+# # tensorflowの警告抑制
+# import os
+# os.environ['HDF5_DISABLE_VERSION_CHECK']='1'
+# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
+# import tensorflow as tf
+# tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+# warnings.filterwarnings("ignore")
+# warnings.simplefilter('ignore')
 
 
 # configの読み込み
@@ -73,8 +71,8 @@ def my_makedirs_remove(path):
     os.makedirs(path)
 
 def save_model_config(key_list, value_list, dir_name, run_name):
-    """実装詳細を管理する
-    どんな「特徴量/パラメータ/cv/setting/」で学習させたモデルかを管理するjsonファイルを出力する
+    """実装詳細を管理する。どんな「特徴量/パラメータ/cv/setting/」で学習させたモデルかを管理するjsonファイルを出力する
+    params→ key_list:キーのリスト、value_list:キーに対するバリューのリスト
     """
     def set_default(obj):
         """json出力の際にset型のオブジェクトをリストに変更する
@@ -92,14 +90,6 @@ def save_model_config(key_list, value_list, dir_name, run_name):
     json_file = open(dir_name + run_name  + '_param.json', 'w', encoding="utf-8")
     json.dump(conf_dict, json_file, indent=4, default=set_default, ensure_ascii=False)
 
-# この関数はutilのThresholdクラスに移動させる。
-def get_label(train_y, train_preds, preds):
-    """preds.pklに保存されている確率を閾値の最適化後にラベルに変換
-    """
-    bt = Threshold.threshold_optimization(train_y, train_preds, Threshold.optimized_f1)
-    print(f"Best Threshold is {bt}")
-    labels = preds >= bt
-    return np.array(labels, dtype="int32")
 
     
 ########### 以下で諸々の設定をする############################################
@@ -111,7 +101,7 @@ def get_cv_info(random_state=42) -> dict:
     # CVしない場合（全データで学習させる場合）はmethodに'None'を設定(それよりもn_split=1にするのがいいかも)
     # StratifiedKFold or GroupKFold or StratifiedGroupKFold の場合はcv_target_gr, cv_target_sfに対象カラム名を設定する
     cv_setting = {
-        'method': 'CustomTimeSeriesSplitter',
+        'method': 'KFold',
         'n_splits': 5,
         'random_state': 123,
         'shuffle': True,
@@ -121,7 +111,7 @@ def get_cv_info(random_state=42) -> dict:
 
 
 def get_run_name(cv_setting, model_type):
-    """run名の作成、いじらなくてよい
+    """run名の作成
     """
     run_name = model_type
     suffix = '_' + datetime.datetime.now().strftime("%m%d%H%M")
@@ -149,11 +139,13 @@ def get_run_info():
         'target': TARGET,       # 目的変数
         'calc_shap': False,     # shap値を計算するか否か
         'save_train_pred': False,    # trainデータに対する予測値を保存するか否か(閾値の最適化に使用)
-        "hopt": "False",           # パラメータチューニング、lgb_hopt,xgb_hopt,nn_hopt,False
+        "hopt": False,           # パラメータチューニング、lgb_hopt,xgb_hopt,nn_hopt,False
         "target_enc": False,     # target encoding をするか否か
         "cat_cols": "all"        # target encodingするカラムをリストで指定
     }
     return run_setting
+
+
 
 
 if __name__ == '__main__':
@@ -163,42 +155,165 @@ if __name__ == '__main__':
     # 使用する特徴量の指定
     # features_list.txtからコピペ、適宜取捨選択
     features = [
-'kind',
-'area',
-'mean_temp',
-'max_temp',
-'min_temp',
-'sum_rain',
-'sun_time',
-'mean_humid',
-'mode_price_31prev',
-'amount_31prev',
-'mean_temp_31prev',
-'max_temp_31prev',
-'min_temp_31prev',
-'sum_rain_31prev',
-'sun_time_31prev',
-'mean_humid_31prev',
-'mode_price_365prev',
-'amount_365prev',
-'mean_temp_365prev',
-'max_temp_365prev',
-'min_temp_365prev',
-'sum_rain_365prev',
-'sun_time_365prev',
-'mean_humid_365prev',
-'mode_price_31prev_mean',
-'amount_31prev_mean',
-'mean_temp_31prev_mean',
-'max_temp_31prev_mean',
-'min_temp_31prev_mean',
-'sum_rain_31prev_mean',
-'sun_time_31prev_mean',
-'mean_humid_31prev_mean',
-'weekday',
-'year',
-'month',
-'day',
+'ID',
+'OwnerID',
+'OwnerSince',
+'TimeToReply',
+'IdentityVerified',
+'ListingsCount',
+'HasPicture',
+'RoomType',
+'MaximumAccommodates',
+'InstantBookable',
+'BathroomsText',
+'Beds',
+'Bedrooms',
+'AreaCategory',
+'Latitude',
+'Longitude',
+'Availability',
+'Vacancy30',
+'Vacancy60',
+'Vacancy90',
+'Vacancy365',
+'UserRatingOverall',
+'UserRatingInformation',
+'UserRatingCleanliness',
+'UserRatingCheckin',
+'UserRatingCommunication',
+'UserRatingLocation',
+'UserRatingPrice',
+'NumberOfReviews',
+'NumberOfReviews1m',
+'NumberOfReviews1y',
+'FirstReview',
+'LastReview',
+'ReviewsPerMonth',
+'OwnerSince_year',
+'OwnerSince_month',
+'FirstReview_year',
+'FirstReview_month',
+'LastReview_year',
+'LastReview_month',
+'ReplyRate_100%',
+'AcceptanceRate_100%',
+'Veri_',
+'Veri_kba',
+'Veri_None',
+'Veri_selfie',
+'Veri_zhima_selfie',
+'Veri_work_email',
+'Veri_facebook',
+'Veri_offline_government_id',
+'Veri_sent_id',
+'Veri_jumio',
+'Veri_phone',
+'Veri_reviews',
+'Veri_google',
+'Veri_weibo',
+'Veri_email',
+'Veri_government_id',
+'Veri_sesame_offline',
+'Veri_manual_online',
+'Veri_sesame',
+'Veri_manual_offline',
+'Veri_identity_manual',
+'Veri_photographer',
+'Verifications_num',
+'Amenities_num',
+'Cluster',
+'Distance_0',
+'Distance_1',
+'Distance_2',
+'Distance_3',
+'Distance_4',
+'Distance_5',
+'Distance_6',
+'Distance_7',
+'Distance_8',
+'Distance_9',
+'diff_FirstReview_LastReview',
+'bert_svd_OwnerDetail_0',
+'bert_svd_OwnerDetail_1',
+'bert_svd_OwnerDetail_2',
+'bert_svd_OwnerDetail_3',
+'bert_svd_OwnerDetail_4',
+'bert_svd_OwnerDetail_5',
+'bert_svd_OwnerDetail_6',
+'bert_svd_OwnerDetail_7',
+'bert_svd_OwnerDetail_8',
+'bert_svd_OwnerDetail_9',
+'bert_svd_OwnerDetail_10',
+'bert_svd_OwnerDetail_11',
+'bert_svd_OwnerDetail_12',
+'bert_svd_OwnerDetail_13',
+'bert_svd_OwnerDetail_14',
+'bert_svd_OwnerDetail_15',
+'bert_svd_OwnerDetail_16',
+'bert_svd_OwnerDetail_17',
+'bert_svd_OwnerDetail_18',
+'bert_svd_OwnerDetail_19',
+'bert_svd_Description_0',
+'bert_svd_Description_1',
+'bert_svd_Description_2',
+'bert_svd_Description_3',
+'bert_svd_Description_4',
+'bert_svd_Description_5',
+'bert_svd_Description_6',
+'bert_svd_Description_7',
+'bert_svd_Description_8',
+'bert_svd_Description_9',
+'bert_svd_Description_10',
+'bert_svd_Description_11',
+'bert_svd_Description_12',
+'bert_svd_Description_13',
+'bert_svd_Description_14',
+'bert_svd_Description_15',
+'bert_svd_Description_16',
+'bert_svd_Description_17',
+'bert_svd_Description_18',
+'bert_svd_Description_19',
+'bert_svd_conbine_PT_Am_BT_0',
+'bert_svd_conbine_PT_Am_BT_1',
+'bert_svd_conbine_PT_Am_BT_2',
+'bert_svd_conbine_PT_Am_BT_3',
+'bert_svd_conbine_PT_Am_BT_4',
+'bert_svd_conbine_PT_Am_BT_5',
+'bert_svd_conbine_PT_Am_BT_6',
+'bert_svd_conbine_PT_Am_BT_7',
+'bert_svd_conbine_PT_Am_BT_8',
+'bert_svd_conbine_PT_Am_BT_9',
+'bert_svd_conbine_PT_Am_BT_10',
+'bert_svd_conbine_PT_Am_BT_11',
+'bert_svd_conbine_PT_Am_BT_12',
+'bert_svd_conbine_PT_Am_BT_13',
+'bert_svd_conbine_PT_Am_BT_14',
+'bert_svd_conbine_PT_Am_BT_15',
+'bert_svd_conbine_PT_Am_BT_16',
+'bert_svd_conbine_PT_Am_BT_17',
+'bert_svd_conbine_PT_Am_BT_18',
+'bert_svd_conbine_PT_Am_BT_19',
+'bert_svd_Review_0',
+'bert_svd_Review_1',
+'bert_svd_Review_2',
+'bert_svd_Review_3',
+'bert_svd_Review_4',
+'bert_svd_Review_5',
+'bert_svd_Review_6',
+'bert_svd_Review_7',
+'bert_svd_Review_8',
+'bert_svd_Review_9',
+'bert_svd_Review_10',
+'bert_svd_Review_11',
+'bert_svd_Review_12',
+'bert_svd_Review_13',
+'bert_svd_Review_14',
+'bert_svd_Review_15',
+'bert_svd_Review_16',
+'bert_svd_Review_17',
+'bert_svd_Review_18',
+'bert_svd_Review_19',
+'Review_count',
     ]
 
 
@@ -208,26 +323,23 @@ if __name__ == '__main__':
 
     # CV設定の読み込み
     cv_setting = get_cv_info(random_state=86)
-
     # run nameの設定
     run_name = get_run_name(cv_setting, model_type="lgb")
     dir_name = MODEL_DIR_NAME + run_name + '/'
-
-    my_makedirs(dir_name)  # runディレクトリの作成。ここにlogなどが吐かれる
-
+    # runディレクトリの作成。ここにlogなどが吐かれる
+    my_makedirs(dir_name)  
     # ファイルの設定を読み込む
     file_setting = get_file_info()
-    
     # 学習の設定を読み込む
     run_setting = get_run_info()
-    run_setting["hopt"] = "lgb_hopt"
+    # run_setting["hopt"] = "lgb_hopt" # パラメータチューニングを行う
 
 
     params = {
         "boosting_type": "gbdt",
-        "objective": "regression",
-        "metric": "mae",
-        "learning_rate": 0.3,
+        "objective": "fair", # regression
+        "metric": "mape",
+        "learning_rate": 0.1,
         "num_leaves": 31,
         "colsample_bytree": 0.5, # feature_fraction
         "reg_lambda": 5,
@@ -240,32 +352,32 @@ if __name__ == '__main__':
         "num_leaves": 31,
     }
 
-
+    # runnerクラスをインスタンス化
     runner = Runner(run_name, ModelLGB, lgb_features, params, file_setting, cv_setting, run_setting)
 
-    # 今回の学習で使用した特徴量名を取得
+    # 今回の学習で使用する特徴量名を取得
     use_feature_name = runner.get_feature_name() 
-
-    # 今回の学習で使用したパラメータを取得
+    # 今回の学習で使用するパラメータを取得
     use_params = runner.get_params()
-
     # モデルのconfigをjsonで保存
     key_list = ['load_features', 'use_features', 'model_params', 'file_setting', 'cv_setting', "run_setting"]
     value_list = [features, use_feature_name, use_params, file_setting, cv_setting, run_setting]
     save_model_config(key_list, value_list, dir_name, run_name)
     
-    # 学習
-    if cv_setting.get('method') == 'None':
-        runner.run_train_all()  # 全データで学習
-        runner.run_predict_all()  # 予測
-    else:
-        runner.run_train_cv()  # 学習
-        ModelLGB.calc_feature_importance(dir_name, run_name, use_feature_name)  # feature_importanceを計算
-        ModelLGB.plot_learning_curve(run_name)  # learning curveを描画
-        runner.run_predict_cv()  # 予測
+    # runnerの学習
+    runner.run_train_cv()  
+
+    # feature_importanceを計算・描画
+    ModelLGB.calc_feature_importance(dir_name, run_name, use_feature_name)  
+     # learning curveを描画
+    ModelLGB.plot_learning_curve(run_name, eval_metiric="mape") 
+
+    # 予測
+    runner.run_predict_cv()  
 
     # submissionファイルの作成
-    lgb_preds = Util.load_df_pickle(dir_name + f'{run_name}-pred.pkl')
+    lgb_preds = Util.load_df_pickle(dir_name + f'{run_name}-pred.pkl') # テストデータに対する予測値の読み込み
+    lgb_preds = np.expm1(lgb_preds) # 対数変換を戻す
     Submission.create_submission(run_name, dir_name, lgb_preds)  # submit作成
 
 
