@@ -22,7 +22,7 @@ class ModelLGB(Model):
 
     def train(self, tr_x, tr_y, va_x=None, va_y=None):
 
-        # データのセット
+        # データセットの作成
         dtrain = lgb.Dataset(tr_x, tr_y)
         dvalid = lgb.Dataset(va_x, va_y)
 
@@ -43,38 +43,11 @@ class ModelLGB(Model):
                             early_stopping_rounds=early_stopping_rounds,
                             verbose_eval=verbose_eval,
                             evals_result=evals_result,
-                            feval=ModelLGB.mape,
-                            fobj=ModelLGB.fair,
+                            feval=ModelLGB.mape, # カスタム評価関数
+                            fobj=ModelLGB.fair, # カスタム目的関数
                             )
         model_array.append(self.model)
         evals_array.append(evals_result)
-
-
-    @staticmethod
-    def mape(self, preds: np.ndarray, dtrain: lgb.Dataset):
-        """カスタム評価関数（mape)
-        """
-        labels = dtrain.get_label()
-        eval_result = Metric.my_metric(labels, preds)
-
-        return "mape", eval_result, False
-
-    @staticmethod
-    def fair(self, preds: np.ndarray, dtrain: lgb.Dataset):
-        """カスタム評価関数（fair loss)
-        """
-        # 残差を取得
-        x = preds - dtrain.get_label()
-        # Fair関数のパラメータ
-        c = 1.0
-        # 勾配の式の分母
-        den = abs(x) + c
-        # 勾配
-        grad = c * x / den
-        # 二階微分値
-        hess = c * c / den ** 2
-
-        return grad, hess
 
 
     def predict(self, te_x):
@@ -100,13 +73,35 @@ class ModelLGB(Model):
         self.model = Util.load(model_path)
 
 
+    @staticmethod
+    def mape(preds: np.ndarray, dtrain: lgb.Dataset):
+        """カスタム評価関数（mape)
+        """
+        labels = dtrain.get_label()
+        eval_result = Metric.my_metric(labels, preds)
 
+        return "mape", eval_result, False
 
-        
+    @staticmethod
+    def fair(preds: np.ndarray, dtrain: lgb.Dataset):
+        """カスタム評価関数（fair loss)
+        """
+        # 残差を取得
+        x = preds - dtrain.get_label()
+        # Fair関数のパラメータ
+        c = 1.0
+        # 勾配の式の分母
+        den = abs(x) + c
+        # 勾配
+        grad = c * x / den
+        # 二階微分値
+        hess = c * c / den ** 2
+
+        return grad, hess
 
 
     @classmethod
-    def plot_learning_curve(self, run_name, eval_metiric):
+    def plot_learning_curve(self, dir_name, run_name, eval_metiric):
 
 
 
@@ -124,7 +119,7 @@ class ModelLGB(Model):
             ax.legend()
             ax.grid(True)
 
-        plt.savefig(FIGURE_DIR_NAME + run_name + '_lcurve.png', dpi=300, bbox_inches="tight")
+        plt.savefig(dir_name + run_name + '_lcurve.png', dpi=300, bbox_inches="tight")
         plt.close()
     
 

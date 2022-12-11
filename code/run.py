@@ -165,7 +165,6 @@ if __name__ == '__main__':
 'RoomType',
 'MaximumAccommodates',
 'InstantBookable',
-'BathroomsText',
 'Beds',
 'Bedrooms',
 'AreaCategory',
@@ -189,6 +188,7 @@ if __name__ == '__main__':
 'FirstReview',
 'LastReview',
 'ReviewsPerMonth',
+'NaN_num',
 'OwnerSince_year',
 'OwnerSince_month',
 'FirstReview_year',
@@ -197,28 +197,28 @@ if __name__ == '__main__':
 'LastReview_month',
 'ReplyRate_100%',
 'AcceptanceRate_100%',
-'Veri_',
-'Veri_kba',
 'Veri_None',
-'Veri_selfie',
-'Veri_zhima_selfie',
-'Veri_work_email',
-'Veri_facebook',
-'Veri_offline_government_id',
-'Veri_sent_id',
-'Veri_jumio',
-'Veri_phone',
-'Veri_reviews',
-'Veri_google',
+'Veri_',
 'Veri_weibo',
+'Veri_offline_government_id',
+'Veri_photographer',
+'Veri_sesame',
+'Veri_jumio',
+'Veri_facebook',
+'Veri_sent_id',
+'Veri_work_email',
+'Veri_selfie',
+'Veri_google',
 'Veri_email',
+'Veri_reviews',
+'Veri_manual_offline',
+'Veri_zhima_selfie',
+'Veri_identity_manual',
+'Veri_phone',
+'Veri_manual_online',
+'Veri_kba',
 'Veri_government_id',
 'Veri_sesame_offline',
-'Veri_manual_online',
-'Veri_sesame',
-'Veri_manual_offline',
-'Veri_identity_manual',
-'Veri_photographer',
 'Verifications_num',
 'Amenities_num',
 'Cluster',
@@ -233,6 +233,10 @@ if __name__ == '__main__':
 'Distance_8',
 'Distance_9',
 'diff_FirstReview_LastReview',
+'Bathrooms_num',
+'Bathrooms_type',
+'OwnerDetail_lang',
+'Description_lang',
 'bert_svd_OwnerDetail_0',
 'bert_svd_OwnerDetail_1',
 'bert_svd_OwnerDetail_2',
@@ -314,6 +318,7 @@ if __name__ == '__main__':
 'bert_svd_Review_18',
 'bert_svd_Review_19',
 'Review_count',
+
     ]
 
 
@@ -338,7 +343,7 @@ if __name__ == '__main__':
     params = {
         "boosting_type": "gbdt",
         "objective": "fair", # regression
-        "metric": "mape",
+        "metric": "None",
         "learning_rate": 0.1,
         "num_leaves": 31,
         "colsample_bytree": 0.5, # feature_fraction
@@ -348,7 +353,7 @@ if __name__ == '__main__':
         "verbose_eval": False,
         "early_stopping_rounds": 100,
         'max_depth': 3,
-        "min_data_in_leaf": 20,
+        "min_data_in_leaf": 10,
         "num_leaves": 31,
     }
 
@@ -370,7 +375,7 @@ if __name__ == '__main__':
     # feature_importanceを計算・描画
     ModelLGB.calc_feature_importance(dir_name, run_name, use_feature_name)  
      # learning curveを描画
-    ModelLGB.plot_learning_curve(run_name, eval_metiric="mape") 
+    ModelLGB.plot_learning_curve(dir_name, run_name, eval_metiric="mape") 
 
     # 予測
     runner.run_predict_cv()  

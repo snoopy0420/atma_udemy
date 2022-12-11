@@ -101,14 +101,13 @@ class Runner:
         train_x = self.train_x.copy()
         train_y = self.train_y.copy()
 
-        # バリデーションさせて学習
+        # 学習データ・バリデーションデータの準備
         # 学習データ・バリデーションデータのindexを取得
         if self.cv_method == 'KFold':
             tr_idx, va_idx = Validation.load_index_k_fold(i_fold, train_x, self.n_splits, self.shuffle, self.random_state)
         else:
             print('CVメソッドが正しくないため終了します')
             sys.exit(0)
-        
         # 学習データ・バリデーションデータをセットする
         tr_x, tr_y = train_x.iloc[tr_idx], train_y.iloc[tr_idx]
         va_x, va_y = train_x.iloc[va_idx], train_y.iloc[va_idx]
