@@ -7,3 +7,4 @@ SETTING:
   FIGURE_DIR_NAME: "../data/figures/" # 図表の保存先ディレクトリ
   TARGET: "Price" # 目的変数
   REMOVE_COLS: ['Price'] # trainデータから削除するカラム
+  HOME_DIR_NAME: "../" 

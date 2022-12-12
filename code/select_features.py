@@ -23,6 +23,7 @@ with open(CONFIG_FILE, encoding="utf-8") as file:
 FEATURE_DIR_NAME = yml['SETTING']['FEATURE_DIR_NAME']  # 生成した特徴量の出力場所
 TARGET = yml['SETTING']['TARGET'] # 目的変数
 REMOVE_COLS = yml['SETTING']['REMOVE_COLS']
+HOME_DIR_NAME = yml['SETTING']['HOME_DIR_NAME']
 
 
 ## trainとtestの特徴量選択する関数を定義
@@ -55,6 +56,7 @@ def select_by_xgb(train, test, n_splits=5, num_feat=50):
         tr_idx, va_idx = Validation.load_index_k_fold(i_fold, train_x, n_splits=n_splits, random_state=42) # 分割indexを取得
         tr_x, tr_y = train_x.iloc[tr_idx], train_y.iloc[tr_idx]
         va_x, va_y = train_x.iloc[va_idx], train_y.iloc[va_idx]
+        # データセットの作成
         dtrain = xgb.DMatrix(tr_x, label=tr_y)
         dvalid = xgb.DMatrix(va_x, label=va_y)
         # 学習
@@ -102,7 +104,7 @@ def main():
     features_list = list(train_select.columns)
     
     # 特徴量リストの保存
-    with open(FEATURE_DIR_NAME + 'selected_features_list.txt', 'wt') as f:
+    with open(HOME_DIR_NAME + 'selected_features_list.txt', 'wt') as f:
         for i in range(len(features_list)):
             f.write('\'' + str(features_list[i]) + '\',\n')
     

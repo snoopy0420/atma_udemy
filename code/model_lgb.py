@@ -43,19 +43,23 @@ class ModelLGB(Model):
                             early_stopping_rounds=early_stopping_rounds,
                             verbose_eval=verbose_eval,
                             evals_result=evals_result,
-                            feval=ModelLGB.mape, # カスタム評価関数
-                            fobj=ModelLGB.fair, # カスタム目的関数
+                            feval=ModelLGB.custum_eval, # カスタム評価関数
+                            fobj=ModelLGB.custum_loss, # カスタム目的関数
                             )
+
+         # モデルと評価を格納
         model_array.append(self.model)
         evals_array.append(evals_result)
 
 
     def predict(self, te_x):
+        """予測（shapを計算しないver）
+        """
         return self.model.predict(te_x, num_iteration=self.model.best_iteration)
 
 
     def predict_and_shap(self, te_x, shap_sampling):
-        """shapを計算するver うまくいかない
+        """予測（shapを計算するver うまくいかない）
         """
         fold_importance = shap.TreeExplainer(self.model).shap_values(te_x[:shap_sampling])
         valid_prediticion = self.model.predict(te_x, num_iteration=self.model.best_iteration)
@@ -63,18 +67,22 @@ class ModelLGB(Model):
 
 
     def save_model(self, path):
+        """モデルを保存
+        """
         model_path = os.path.join(path, f'{self.run_fold_name}.model')
         os.makedirs(os.path.dirname(model_path), exist_ok=True)
         Util.dump(self.model, model_path)
 
 
     def load_model(self, path):
+        """モデルの読み込み
+        """
         model_path = os.path.join(path, f'{self.run_fold_name}.model')
         self.model = Util.load(model_path)
 
 
     @staticmethod
-    def mape(preds: np.ndarray, dtrain: lgb.Dataset):
+    def custum_eval(preds: np.ndarray, dtrain: lgb.Dataset):
         """カスタム評価関数（mape)
         """
         labels = dtrain.get_label()
@@ -84,7 +92,7 @@ class ModelLGB(Model):
         return "mape", eval_result, False
 
     @staticmethod
-    def fair(preds: np.ndarray, dtrain: lgb.Dataset):
+    def custum_loss(preds: np.ndarray, dtrain: lgb.Dataset):
         """カスタム評価関数（fair loss)
         """
         # 残差を取得
@@ -102,9 +110,7 @@ class ModelLGB(Model):
 
 
     @classmethod
-    def plot_learning_curve(self, dir_name, run_name, eval_metiric):
-
-
+    def plot_learning_curve(self, dir_name, run_name, eval_metric):
 
         # 学習過程の可視化、foldが４以上の時のみ
         fig, axes = plt.subplots(2, 2, figsize=(12,8))
@@ -113,10 +119,10 @@ class ModelLGB(Model):
         plt.title('Learning curve')
 
         for i, ax in enumerate(axes.ravel()):
-            ax.plot(evals_array[i]['train']['mape'][10:], label="train")
-            ax.plot(evals_array[i]['eval']['mape'][10:], label="valid")
+            ax.plot(evals_array[i]['train'][eval_metric][10:], label="train")
+            ax.plot(evals_array[i]['eval'][eval_metric][10:], label="valid")
             ax.set_xlabel('epoch')
-            ax.set_ylabel(eval_metiric)
+            ax.set_ylabel(eval_metric)
             ax.legend()
             ax.grid(True)
 
