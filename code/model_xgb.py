@@ -86,7 +86,7 @@ class ModelXGB(Model):
 
     @classmethod
     def plot_learning_curve(self, run_name):
-        """学習過程の可視化、foldが４以上の時のみ
+        """学習過程の可視化、foldが4以上の時のみ
         """
         eval_metiric = "mae"
         print(evals_array[0]) # eval_metiricを確認
