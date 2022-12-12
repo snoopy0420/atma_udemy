@@ -20,13 +20,11 @@ evals_array = []
 
 class ModelXGB(Model):
 
-    def train(self, tr_x, tr_y, va_x=None, va_y=None):
+    def train(self, tr_x, tr_y, va_x, va_y):
 
         # データのセット
         dtrain = xgb.DMatrix(tr_x, label=tr_y)
-        validation = va_x is not None        
-        if validation:
-            dvalid = xgb.DMatrix(va_x, label=va_y)
+        dvalid = xgb.DMatrix(va_x, label=va_y)
 
         # ハイパーパラメータの設定
         params = dict(self.params)
@@ -34,39 +32,33 @@ class ModelXGB(Model):
         verbose = params.pop('verbose')
 
         # 学習
-        if validation:
-            evals_result = {}
-            early_stopping_rounds = params.pop('early_stopping_rounds')
-            watchlist = [(dtrain, 'train'), (dvalid, 'eval')]
-            self.model = xgb.train(
-                params,
-                dtrain,
-                num_round,
-                evals=watchlist,
-                early_stopping_rounds=early_stopping_rounds,
-                verbose_eval=verbose,
-                evals_result=evals_result,
-                )
-            model_array.append(self.model)
-            evals_array.append(evals_result)
+        evals_result = {}
+        early_stopping_rounds = params.pop('early_stopping_rounds')
+        watchlist = [(dtrain, 'train'), (dvalid, 'eval')]
+        self.model = xgb.train(
+            params,
+            dtrain,
+            num_round,
+            evals=watchlist,
+            early_stopping_rounds=early_stopping_rounds,
+            verbose_eval=verbose,
+            evals_result=evals_result,
+            )
 
-        else:
-            watchlist = [(dtrain, 'train')]
-            self.model = xgb.train(
-                params,
-                dtrain, 
-                num_round, 
-                evals=watchlist
-                )
-            model_array.append(self.model)
+        # モデルと評価を格納
+        model_array.append(self.model)
+        evals_array.append(evals_result)
 
-    # shapを計算しないver
+
     def predict(self, te_x):
+        """shapを計算しないver
+        """
         dtest = xgb.DMatrix(te_x)
         return self.model.predict(dtest, ntree_limit=self.model.best_ntree_limit)
-
-     # shapを計算するver
+ 
     def predict_and_shap(self, te_x, shap_sampling):
+        """shapを計算するver うまくいかない
+        """
         fold_importance = shap.TreeExplainer(self.model).shap_values(te_x[:shap_sampling])
         dtest = xgb.DMatrix(te_x)
         valid_prediticion = self.model.predict(dtest, ntree_limit=self.model.best_ntree_limit)
@@ -85,25 +77,22 @@ class ModelXGB(Model):
 
 
     @classmethod
-    def plot_learning_curve(self, run_name):
+    def plot_learning_curve(self, dir_name, run_name, eval_metric):
         """学習過程の可視化、foldが４以上の時のみ
         """
-        eval_metiric = "mae"
-        print(evals_array[0]) # eval_metiricを確認
-
         fig, axes = plt.subplots(2, 2, figsize=(12,8))
         plt.tick_params(labelsize=12)
         plt.tight_layout()
         plt.title('Learning curve')
         for i, ax in enumerate(axes.ravel()):
-            ax.plot(evals_array[i]['train'][eval_metiric][10:], label="train")
-            ax.plot(evals_array[i]['eval'][eval_metiric][10:], label="valid")
+            ax.plot(evals_array[i]['train'][eval_metric][10:], label="train")
+            ax.plot(evals_array[i]['eval'][eval_metric][10:], label="valid")
             ax.set_xlabel('epoch')
-            ax.set_ylabel(eval_metiric)
+            ax.set_ylabel(eval_metric)
             ax.legend()
             ax.grid(True)
 
-        plt.savefig(FIGURE_DIR_NAME + run_name + '_lcurve.png', dpi=300, bbox_inches="tight")
+        plt.savefig(dir_name + run_name + '_lcurve.png', dpi=300, bbox_inches="tight")
         plt.close()
     
 
@@ -157,6 +146,6 @@ class ModelXGB(Model):
         ax1.grid(True)
         ax2.grid(False)
 
-        plt.savefig(FIGURE_DIR_NAME + run_name + '_fi_gain.png', dpi=300, bbox_inches="tight")
+        plt.savefig(dir_name + run_name +  '_fi_gain.png', dpi=300, bbox_inches="tight")
         plt.close()
 
