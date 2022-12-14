@@ -126,8 +126,8 @@ def get_file_info():
     file_setting = {
         'feature_dir_name': FEATURE_DIR_NAME,   # 特徴量の読み込み先ディレクトリ
         'model_dir_name': MODEL_DIR_NAME,       # モデルの保存先ディレクトリ
-        'train_file_name': "train.pkl",          # 学習に使用するtrainファイル名
-        'test_file_name': 'test.pkl',            # 予測に使用するtestファイル名
+        'train_file_name': "vs_train.pkl",          # 学習に使用するtrainファイル名
+        'test_file_name': 'vs_test.pkl',            # 予測に使用するtestファイル名
     }
     return file_setting
 
@@ -324,139 +324,131 @@ if __name__ == '__main__':
 
 ######### LightGBM #############################################################
 
-    lgb_features = features
+    # lgb_features = features
+
+    # # CV設定の読み込み
+    # cv_setting = get_cv_info(random_state=86)
+    # # run nameの設定
+    # run_name = get_run_name(cv_setting, model_type="lgb")
+    # dir_name = MODEL_DIR_NAME + run_name + '/'
+    # # runディレクトリの作成。ここにlogなどが吐かれる
+    # my_makedirs(dir_name)  
+    # # ファイルの設定を読み込む
+    # file_setting = get_file_info()
+    # # 学習の設定を読み込む
+    # run_setting = get_run_info()
+    # # run_setting["hopt"] = "lgb_hopt" # パラメータチューニングを行う
+
+
+    # params = {
+    #     "boosting_type": "gbdt",
+    #     "objective": "fair", # regression
+    #     "metric": "None",
+    #     "learning_rate": 0.1,
+    #     "num_leaves": 31,
+    #     "colsample_bytree": 0.5, # feature_fraction
+    #     "reg_lambda": 5,
+    #     "random_state": 71,
+    #     "num_boost_round": 5000,
+    #     "verbose_eval": False,
+    #     "early_stopping_rounds": 100,
+    #     'max_depth': 3,
+    #     "min_data_in_leaf": 10,
+    #     "num_leaves": 31,
+    # }
+
+    # # runnerクラスをインスタンス化
+    # runner = Runner(run_name, ModelLGB, lgb_features, params, file_setting, cv_setting, run_setting)
+
+    # # 今回の学習で使用する特徴量名を取得
+    # use_feature_name = runner.get_feature_name() 
+    # # 今回の学習で使用するパラメータを取得
+    # use_params = runner.get_params()
+    # # モデルのconfigをjsonで保存
+    # key_list = ['load_features', 'use_features', 'model_params', 'file_setting', 'cv_setting', "run_setting"]
+    # value_list = [features, use_feature_name, use_params, file_setting, cv_setting, run_setting]
+    # save_model_config(key_list, value_list, dir_name, run_name)
+    
+    # # runnerの学習
+    # runner.run_train_cv()  
+
+    # # feature_importanceを計算・描画
+    # ModelLGB.calc_feature_importance(dir_name, run_name, use_feature_name)  
+    #  # learning curveを描画
+    # ModelLGB.plot_learning_curve(dir_name, run_name, eval_metric="mape") 
+
+    # # 予測
+    # runner.run_predict_cv()  
+
+    # # submissionファイルの作成
+    # lgb_preds = Util.load_df_pickle(dir_name + f'{run_name}-pred.pkl') # テストデータに対する予測値の読み込み
+    # lgb_preds = np.expm1(lgb_preds) # 対数変換を戻す
+    # Submission.create_submission(run_name, dir_name, lgb_preds)  # submit作成
+
+
+
+######## xgboost ###############################################
+ 
+    # 特徴量
+    xgb_features = features
 
     # CV設定の読み込み
     cv_setting = get_cv_info(random_state=86)
-    # run nameの設定
-    run_name = get_run_name(cv_setting, model_type="lgb")
+    # run name設定の読み込み
+    run_name = get_run_name(cv_setting, model_type="xgb")
     dir_name = MODEL_DIR_NAME + run_name + '/'
-    # runディレクトリの作成。ここにlogなどが吐かれる
+    # runディレクトリの作成。
     my_makedirs(dir_name)  
     # ファイルの設定を読み込む
     file_setting = get_file_info()
     # 学習の設定を読み込む
     run_setting = get_run_info()
-    # run_setting["hopt"] = "lgb_hopt" # パラメータチューニングを行う
+    # run_setting["hopt"] = "xgb_hopt"
 
-
+    # xgbパラメータを設定する
     params = {
-        "boosting_type": "gbdt",
-        "objective": "fair", # regression
-        "metric": "None",
-        "learning_rate": 0.1,
-        "num_leaves": 31,
-        "colsample_bytree": 0.5, # feature_fraction
-        "reg_lambda": 5,
-        "random_state": 71,
-        "num_boost_round": 5000,
-        "verbose_eval": False,
-        "early_stopping_rounds": 100,
-        'max_depth': 3,
-        "min_data_in_leaf": 10,
-        "num_leaves": 31,
+        'booster': 'gbtree',
+        'objective': 'reg:pseudohubererror',
+        "eval_metric": "mape",
+        'eta': 0.3,
+        'gamma': 0.0,
+        'alpha': 0.0,
+        'lambda': 1.0,
+        'min_child_weight': 1,
+        'max_depth': 5,
+        'subsample': 0.8,
+        'colsample_bytree': 0.8,
+        'random_state': 71,
+        "verbose": False,
+        'num_round': 5000,
+        'early_stopping_rounds': 200,
     }
 
-    # runnerクラスをインスタンス化
-    runner = Runner(run_name, ModelLGB, lgb_features, params, file_setting, cv_setting, run_setting)
+    # インスタンス生成
+    runner = Runner(run_name, ModelXGB, xgb_features, params, file_setting, cv_setting, run_setting)
 
-    # 今回の学習で使用する特徴量名を取得
+    # 今回の学習で使用した特徴量名を取得
     use_feature_name = runner.get_feature_name() 
-    # 今回の学習で使用するパラメータを取得
+    # 今回の学習で使用したパラメータを取得
     use_params = runner.get_params()
     # モデルのconfigをjsonで保存
     key_list = ['load_features', 'use_features', 'model_params', 'file_setting', 'cv_setting', "run_setting"]
     value_list = [features, use_feature_name, use_params, file_setting, cv_setting, run_setting]
     save_model_config(key_list, value_list, dir_name, run_name)
     
-    # runnerの学習
-    runner.run_train_cv()  
+    # 学習
+    runner.run_train_cv()
 
-    # feature_importanceを計算・描画
-    ModelLGB.calc_feature_importance(dir_name, run_name, use_feature_name)  
-     # learning curveを描画
-    ModelLGB.plot_learning_curve(dir_name, run_name, eval_metiric="mape") 
+    ModelXGB.calc_feature_importance(dir_name, run_name, use_feature_name)  # feature_importanceを計算
+    ModelXGB.plot_learning_curve(dir_name, run_name, eval_metric="mape")  # learning curveを描画
 
     # 予測
-    runner.run_predict_cv()  
+    runner.run_predict_cv()  # 予測
 
     # submissionファイルの作成
-    lgb_preds = Util.load_df_pickle(dir_name + f'{run_name}-pred.pkl') # テストデータに対する予測値の読み込み
-    lgb_preds = np.expm1(lgb_preds) # 対数変換を戻す
-    Submission.create_submission(run_name, dir_name, lgb_preds)  # submit作成
-
-
-
-######## xgboost ###############################################
- 
-    # # 特徴量
-    # xgb_features = features
-
-    # # CV設定の読み込み
-    # cv_setting = get_cv_info()
-
-    # # run name設定の読み込み
-    # run_name = get_run_name(cv_setting, model_type="xgb")
-    # dir_name = MODEL_DIR_NAME + run_name + '/'
-
-    # # ログを吐くディレクトリを作成する
-    # # exist_check(MODEL_DIR_NAME, run_name)  # これは使わない、使うと実行が終わらない
-    # my_makedirs(dir_name)  # runディレクトリの作成。ここにlogなどが吐かれる
-
-    # # ファイルの設定を読み込む
-    # file_setting = get_file_info()
-
-    # # 学習の設定を読み込む
-    # run_setting = get_run_info()
-    # run_setting["hopt"] = "xgb_hopt"
-    # # run_setting["calc_shap"] = True
-
-    # # xgbパラメータを設定する
-    # params = {
-    #     'booster': 'gbtree',
-    #     'objective': 'reg:squarederror',
-    #     "eval_metric": "mae",
-    #     'eta': 0.3,
-    #     'gamma': 0.0,
-    #     'alpha': 0.0,
-    #     'lambda': 1.0,
-    #     'min_child_weight': 1,
-    #     'max_depth': 5,
-    #     'subsample': 0.8,
-    #     'colsample_bytree': 0.8,
-    #     'random_state': 71,
-    #     'num_round': 1000,
-    #     "verbose": False,
-    #     'early_stopping_rounds': 100,
-    # }
-
-    # # インスタンス生成
-    # runner = Runner(run_name, ModelXGB, xgb_features, params, file_setting, cv_setting, run_setting)
-
-    # # 今回の学習で使用した特徴量名を取得
-    # use_feature_name = runner.get_feature_name() 
-
-    # # 今回の学習で使用したパラメータを取得
-    # use_params = runner.get_params()
-
-    # # モデルのconfigをjsonで保存
-    # key_list = ['load_features', 'use_features', 'model_params', 'file_setting', 'cv_setting', "run_setting"]
-    # value_list = [features, use_feature_name, use_params, file_setting, cv_setting, run_setting]
-    # save_model_config(key_list, value_list, dir_name, run_name)
-    
-    # # 学習
-    # if cv_setting.get('method') == 'None':
-    #     runner.run_train_all()  # 全データで学習
-    #     runner.run_predict_all()  # 予測
-    # else:
-    #     runner.run_train_cv()  # 学習
-    #     ModelXGB.calc_feature_importance(dir_name, run_name, use_feature_name)  # feature_importanceを計算
-    #     ModelXGB.plot_learning_curve(run_name)  # learning curveを描画
-    #     runner.run_predict_cv()  # 予測
-
-    # # submissionファイルの作成
-    # xgb_preds = Util.load_df_pickle(dir_name + f'{run_name}-pred.pkl')
-    # Submission.create_submission(run_name, dir_name, xgb_preds)  # submit作成
+    xgb_preds = Util.load_df_pickle(dir_name + f'{run_name}-pred.pkl')
+    lgb_preds = np.expm1(xgb_preds) # 対数変換を戻す
+    Submission.create_submission(run_name, dir_name, xgb_preds)  # submit作成
 
     
 
