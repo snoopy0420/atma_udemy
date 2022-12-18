@@ -184,13 +184,11 @@ class Metric:
         今回の分析で使用する評価関数、コンペの評価指標に応じて変更する
         """
         # 対数変換を戻す
-        print(y_pred)
         y_pred = np.expm1(y_pred)
-        print(y_pred)
         y_true = np.expm1(y_true)
-        print(y_true)
         # スコアを計算
         result = mean_absolute_percentage_error(y_true, y_pred)
+
         return result
 
     

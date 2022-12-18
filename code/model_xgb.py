@@ -20,7 +20,7 @@ evals_array = []
 
 class ModelXGB(Model):
 
-    def train(self, tr_x, tr_y, va_x, va_y):
+    def train(self, tr_x, tr_y, va_x=None, va_y=None):
 
         # データのセット
         dtrain = xgb.DMatrix(tr_x, label=tr_y)
@@ -30,10 +30,10 @@ class ModelXGB(Model):
         params = dict(self.params)
         num_round = params.pop('num_round')
         verbose = params.pop('verbose')
+        early_stopping_rounds = params.pop('early_stopping_rounds')
 
         # 学習
         evals_result = {}
-        early_stopping_rounds = params.pop('early_stopping_rounds')
         watchlist = [(dtrain, 'train'), (dvalid, 'eval')]
         self.model = xgb.train(
             params,
@@ -54,7 +54,7 @@ class ModelXGB(Model):
         """shapを計算しないver
         """
         dtest = xgb.DMatrix(te_x)
-        return self.model.predict(dtest, ntree_limit=self.model.best_ntree_limit)
+        return self.model.predict(dtest, iteration_range=(0, self.model.best_iteration + 1))
  
     def predict_and_shap(self, te_x, shap_sampling):
         """shapを計算するver うまくいかない
@@ -78,7 +78,7 @@ class ModelXGB(Model):
 
     @classmethod
     def plot_learning_curve(self, dir_name, run_name, eval_metric):
-        """学習過程の可視化、foldが４以上の時のみ
+        """学習過程の可視化、foldが4以上の時のみ
         """
         fig, axes = plt.subplots(2, 2, figsize=(12,8))
         plt.tick_params(labelsize=12)

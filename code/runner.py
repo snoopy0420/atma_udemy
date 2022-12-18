@@ -94,14 +94,12 @@ class Runner:
         :param i_fold: foldの番号（すべてのときには'all'とする）, metrics: 評価に用いる関数
         :return: （モデルのインスタンス、レコードのインデックス、予測値、評価によるスコア）のタプル
         """
-        if metrics == None:
-            metrics = self.metrics
 
         # 学習データの読込
         train_x = self.train_x.copy()
         train_y = self.train_y.copy()
 
-        # 学習データ・バリデーションデータの準備
+        # データセットの準備
         # 学習データ・バリデーションデータのindexを取得
         if self.cv_method == 'KFold':
             tr_idx, va_idx = Validation.load_index_k_fold(i_fold, train_x, self.n_splits, self.shuffle, self.random_state)
@@ -120,12 +118,15 @@ class Runner:
         model = self.build_model(i_fold)
         model.train(tr_x, tr_y, va_x, va_y)
 
-        # バリデーションデータへの予測・評価を行う
+        # バリデーションデータの予測
         if self.calc_shap:
             va_pred, self.shap_values[va_idx[:shap_sampling]] = model.predict_and_shap(va_x, shap_sampling)
         else:
             va_pred = model.predict(va_x)
 
+        # バリデーションデータの評価
+        if metrics == None:
+            metrics = self.metrics
         score = metrics(va_y, va_pred)
 
         # モデル、インデックス、予測値、評価を返す
@@ -339,7 +340,7 @@ class Runner:
                 'num_leaves': hp.quniform('num_leaves', 50, 200, 10),
                 'max_depth': hp.quniform('max_depth', 3, 10, 1),
                 'min_data_in_leaf': hp.quniform('min_data_in_leaf',  5, 25, 2),
-                'feature_fraction': hp.uniform('feature_fraction', 0.5, 1.0),
+                'colsample_bytree': hp.uniform('colsample_bytree', 0.5, 1.0),
                 'subsample': hp.uniform('subsample', 0.5, 1.0)  
             }
         elif self.hopt == "nn_hopt":
@@ -378,7 +379,8 @@ class Runner:
         """学習データとバリデーションデータのtarget encodingを実行する
         """
         if cat_cols == "all":
-            cat_cols = list(tr_x.dtypes[tr_x.dtypes=="object"].index)
+            cat_cols = list(tr_x.dtypes[tr_x.dtypes=="object"].index) # 全てのカテゴリ
+            # cat_cols = list(tr_x.columns) # 全てのカラム
 
         # 変数をループしてtarget encoding
         print("target_encoding", cat_cols)
@@ -409,6 +411,7 @@ class Runner:
         """
         if cat_cols == "all":
             cat_cols = list(train_x.dtypes[train_x.dtypes=="object"].index)
+            # cat_cols = list(train_x.columns) # 全てのカラム
 
         for c in cat_cols:
             # テストデータを変換
