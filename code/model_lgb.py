@@ -30,10 +30,10 @@ class ModelLGB(Model):
         params = dict(self.params)
         num_round = params.pop('num_boost_round')
         verbose_eval = params.pop('verbose_eval')
+        early_stopping_rounds = params.pop('early_stopping_rounds')
 
         # 学習
         evals_result = {}
-        early_stopping_rounds = params.pop('early_stopping_rounds')
         self.model = lgb.train(
                             params,
                             dtrain,

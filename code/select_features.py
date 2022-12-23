@@ -37,8 +37,8 @@ def select_by_xgb(train, test, n_splits=5, num_feat=50):
     params = {
         'booster': 'gbtree',
         'objective': 'reg:pseudohubererror',
-        'eval_metric': 'mape',
-        'eta': 0.1,
+        "eval_metric": "mape",
+        'eta': 0.01,
         'gamma': 0.0,
         'alpha': 0.0,
         'lambda': 1.0,
@@ -46,12 +46,16 @@ def select_by_xgb(train, test, n_splits=5, num_feat=50):
         'max_depth': 5,
         'subsample': 0.8,
         'colsample_bytree': 0.8,
-        'random_state': 87,
+        'random_state': 71,
+        "verbose": True,
     }
 
     # 各foldの重要度を算出する
     gain_df = pd.DataFrame(index=train_x.columns) # gainの格納場所
     for i_fold in range(n_splits):
+
+        print("Start fold", i_fold)
+
         # 学習データと検証データに分割
         tr_idx, va_idx = Validation.load_index_k_fold(i_fold, train_x, n_splits=n_splits, random_state=42) # 分割indexを取得
         tr_x, tr_y = train_x.iloc[tr_idx], train_y.iloc[tr_idx]
@@ -66,7 +70,7 @@ def select_by_xgb(train, test, n_splits=5, num_feat=50):
             5000,
             evals=[(dtrain, 'train'), (dvalid, 'eval')],
             early_stopping_rounds=100,
-            verbose_eval=False)
+            verbose_eval=True)
         # gainの取り出し、格納
         gain = model.get_score(importance_type='total_gain')
         _df = pd.DataFrame(gain.values(), index=gain.keys())
@@ -74,6 +78,8 @@ def select_by_xgb(train, test, n_splits=5, num_feat=50):
 
     # 各foldの平均を算出
     gain_df_mean = pd.DataFrame(gain_df.mean(axis=1), columns=['importance']).fillna(0)
+
+    print(gain_df_mean.sort_values("importance", ascending=False).iloc[:num_feat])
     
     # 降順に並べ替えてindexを取得
     selected_feats = gain_df_mean.sort_values("importance", ascending=False).iloc[:num_feat].index

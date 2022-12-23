@@ -8,12 +8,21 @@ import japanize_matplotlib
 
 from keras.utils import np_utils
 from keras.callbacks import EarlyStopping
-from keras.layers.advanced_activations import ReLU, PReLU
+from keras.layers import ReLU, PReLU
 from keras.layers.core import Dense, Dropout
-from keras.layers.normalization import BatchNormalization
+from keras.layers import BatchNormalization
 from keras.models import Sequential, load_model
 from keras.optimizers import SGD, Adam
 from sklearn.preprocessing import StandardScaler
+
+# from keras.utils import np_utils
+# from keras.callbacks import EarlyStopping
+# from keras.layers.advanced_activations import ReLU, PReLU
+# from keras.layers.core import Dense, Dropout
+# from keras.layers.normalization import BatchNormalization
+# from keras.models import Sequential, load_model
+# from keras.optimizers import SGD, Adam
+# from sklearn.preprocessing import StandardScaler
 
 from model import Model
 from util import Util
@@ -44,11 +53,10 @@ class ModelNN(Model):
         self.scaler = StandardScaler().fit(tr_x)
         tr_x = self.scaler.transform(tr_x)
         # tr_y = np_utils.to_categorical(tr_y)
+        va_x = self.scaler.transform(va_x)
+        # va_y = np_utils.to_categorical(va_y)
 
-        validation = va_x is not None
-        if validation:
-            va_x = self.scaler.transform(va_x)
-            # va_y = np_utils.to_categorical(va_y)
+        print(tr_x)
 
         # パラメータ
         num_classes = self.params["num_classes"]
@@ -97,36 +105,29 @@ class ModelNN(Model):
 
         # 目的関数、評価指標などの設定
         self.model.compile(loss=loss, optimizer=optimizer, metrics=metrics)
-        
+
+        self.model.summary()
+
         # エポック数、アーリーストッピング、学習の実行
         # あまりepochを大きくすると、小さい学習率のときに終わらないことがあるので注意
         nb_epoch = 1000
         patience = 100 
-        if validation:
-            early_stopping = EarlyStopping(monitor='val_loss',patience=patience, restore_best_weights=True)
-            history = self.model.fit(
-                tr_x, tr_y,
-                epochs=nb_epoch,
-                batch_size=batch_size, 
-                verbose=0,
-                validation_data=(va_x, va_y),
-                callbacks=[early_stopping]
-                )
-        else:
-            self.model.fit(
-                tr_x, tr_y, 
-                nb_epoch=nb_epoch, 
-                batch_size=batch_size, 
-                verbose=0
-                )
-        
+        early_stopping = EarlyStopping(monitor='val_loss',patience=patience, restore_best_weights=True)
+        history = self.model.fit(
+            tr_x, tr_y,
+            epochs=nb_epoch,
+            batch_size=batch_size, 
+            verbose=0,
+            validation_data=(va_x, va_y),
+            callbacks=[early_stopping]
+        )
 
         hists.append(pd.DataFrame(history.history))
 
         
     def predict(self, te_x):
         te_x = self.scaler.transform(te_x)
-        pred = self.model.predict_proba(te_x)
+        pred = self.model.predict(te_x)
         return pred
 
      # shapを計算するver、うまくいかない
@@ -151,7 +152,7 @@ class ModelNN(Model):
         self.scaler = Util.load(scaler_path)
 
     @classmethod
-    def plot_learning_curve(self, run_name):
+    def plot_learning_curve(self, dir_name, run_name):
         """学習曲線を描く
         """
         print(len(hists))
@@ -189,7 +190,7 @@ class ModelNN(Model):
             ax.legend()
             ax.grid(True)
 
-        plt.savefig(FIGURE_DIR_NAME + run_name + '_curve.png', dpi=300, bbox_inches="tight")
+        plt.savefig(dir_name + run_name + '_curve.png', dpi=300, bbox_inches="tight")
         plt.close()
     
 

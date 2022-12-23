@@ -45,13 +45,20 @@ def prep_label_encoding(df):
     # カテゴリ変数のカラムを抽出
     obj_cats = df.dtypes[df.dtypes=="object"].index
 
-    # categoryにキャスト
+    # 
     for cat in obj_cats:
         le = LabelEncoder().fit(df[cat])
         df[cat] = le.transform(df[cat])
 
     return df
 
+def prep_nan(df):
+    """欠損値の補完、ニューラルネット用
+    """
+
+    df = df.fillna(0)
+
+    return df
 
 
 
@@ -64,15 +71,21 @@ def main():
     df = pd.concat([train, test], ignore_index=True)
     print("train shape: ", train.shape)
     print("test shape: ", test.shape)
-
+    
     # 前処理
     df = prep_label_encoding(df)
+    nn_df = prep_nan(df)
     
     # pickleファイルとして保存
     vs_train = df.iloc[:len(train), :]
     vs_test = df.iloc[len(train):, :]
     vs_train.to_pickle(FEATURE_DIR_NAME + 'vs_train.pkl')
     vs_test.to_pickle(FEATURE_DIR_NAME + 'vs_test.pkl')
+
+    nn_train = nn_df.iloc[:len(train), :]
+    nn_test = nn_df.iloc[len(train):, :]
+    nn_train.to_pickle(FEATURE_DIR_NAME + 'nn_train.pkl')
+    nn_test.to_pickle(FEATURE_DIR_NAME + 'nn_test.pkl')
 #     logger.info(f'train shape: {train.shape}, test shape, {test.shape}')
     
     # 生成した特徴量のリスト

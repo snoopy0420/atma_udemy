@@ -8,21 +8,21 @@ import collections as cl
 import warnings
 from model_lgb import ModelLGB
 from model_xgb import ModelXGB
-#from model_nn import ModelNN
+from model_nn import ModelNN
 from runner import Runner
 from util import Submission, Util
 import pandas as pd
 import numpy as np
 
 
-# # tensorflowの警告抑制
-# import os
-# os.environ['HDF5_DISABLE_VERSION_CHECK']='1'
-# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
-# import tensorflow as tf
-# tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-# warnings.filterwarnings("ignore")
-# warnings.simplefilter('ignore')
+# tensorflowの警告抑制
+import os
+os.environ['HDF5_DISABLE_VERSION_CHECK']='1'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
+import tensorflow as tf
+tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+warnings.filterwarnings("ignore")
+warnings.simplefilter('ignore')
 
 
 # configの読み込み
@@ -165,7 +165,6 @@ if __name__ == '__main__':
 'RoomType',
 'MaximumAccommodates',
 'InstantBookable',
-'Beds',
 'Bedrooms',
 'AreaCategory',
 'Latitude',
@@ -197,46 +196,43 @@ if __name__ == '__main__':
 'LastReview_month',
 'ReplyRate_100%',
 'AcceptanceRate_100%',
-'Veri_None',
 'Veri_',
-'Veri_weibo',
-'Veri_offline_government_id',
-'Veri_photographer',
-'Veri_sesame',
-'Veri_jumio',
-'Veri_facebook',
-'Veri_sent_id',
-'Veri_work_email',
-'Veri_selfie',
-'Veri_google',
-'Veri_email',
-'Veri_reviews',
-'Veri_manual_offline',
-'Veri_zhima_selfie',
-'Veri_identity_manual',
-'Veri_phone',
-'Veri_manual_online',
-'Veri_kba',
-'Veri_government_id',
 'Veri_sesame_offline',
+'Veri_phone',
+'Veri_offline_government_id',
+'Veri_facebook',
+'Veri_selfie',
+'Veri_manual_offline',
+'Veri_photographer',
+'Veri_email',
+'Veri_jumio',
+'Veri_google',
+'Veri_None',
+'Veri_reviews',
+'Veri_kba',
+'Veri_manual_online',
+'Veri_government_id',
+'Veri_sesame',
+'Veri_weibo',
+'Veri_work_email',
+'Veri_identity_manual',
+'Veri_sent_id',
+'Veri_zhima_selfie',
 'Verifications_num',
 'Amenities_num',
-'Cluster',
-'Distance_0',
-'Distance_1',
-'Distance_2',
-'Distance_3',
-'Distance_4',
-'Distance_5',
-'Distance_6',
-'Distance_7',
-'Distance_8',
-'Distance_9',
+'City',
+'Distance_from_City',
+'CtiyPopulation',
+'Country',
+'Turist_num_Country',
 'diff_FirstReview_LastReview',
 'Bathrooms_num',
 'Bathrooms_type',
 'OwnerDetail_lang',
+'OwnerDetail_lang_confidence',
 'Description_lang',
+'Description_lang_confidence',
+'Beds_per_Bedroom',
 'bert_svd_OwnerDetail_0',
 'bert_svd_OwnerDetail_1',
 'bert_svd_OwnerDetail_2',
@@ -277,26 +273,26 @@ if __name__ == '__main__':
 'bert_svd_Description_17',
 'bert_svd_Description_18',
 'bert_svd_Description_19',
-'bert_svd_conbine_PT_Am_BT_0',
-'bert_svd_conbine_PT_Am_BT_1',
-'bert_svd_conbine_PT_Am_BT_2',
-'bert_svd_conbine_PT_Am_BT_3',
-'bert_svd_conbine_PT_Am_BT_4',
-'bert_svd_conbine_PT_Am_BT_5',
-'bert_svd_conbine_PT_Am_BT_6',
-'bert_svd_conbine_PT_Am_BT_7',
-'bert_svd_conbine_PT_Am_BT_8',
-'bert_svd_conbine_PT_Am_BT_9',
-'bert_svd_conbine_PT_Am_BT_10',
-'bert_svd_conbine_PT_Am_BT_11',
-'bert_svd_conbine_PT_Am_BT_12',
-'bert_svd_conbine_PT_Am_BT_13',
-'bert_svd_conbine_PT_Am_BT_14',
-'bert_svd_conbine_PT_Am_BT_15',
-'bert_svd_conbine_PT_Am_BT_16',
-'bert_svd_conbine_PT_Am_BT_17',
-'bert_svd_conbine_PT_Am_BT_18',
-'bert_svd_conbine_PT_Am_BT_19',
+'bert_svd_conbine_PT_Am_0',
+'bert_svd_conbine_PT_Am_1',
+'bert_svd_conbine_PT_Am_2',
+'bert_svd_conbine_PT_Am_3',
+'bert_svd_conbine_PT_Am_4',
+'bert_svd_conbine_PT_Am_5',
+'bert_svd_conbine_PT_Am_6',
+'bert_svd_conbine_PT_Am_7',
+'bert_svd_conbine_PT_Am_8',
+'bert_svd_conbine_PT_Am_9',
+'bert_svd_conbine_PT_Am_10',
+'bert_svd_conbine_PT_Am_11',
+'bert_svd_conbine_PT_Am_12',
+'bert_svd_conbine_PT_Am_13',
+'bert_svd_conbine_PT_Am_14',
+'bert_svd_conbine_PT_Am_15',
+'bert_svd_conbine_PT_Am_16',
+'bert_svd_conbine_PT_Am_17',
+'bert_svd_conbine_PT_Am_18',
+'bert_svd_conbine_PT_Am_19',
 'bert_svd_Review_0',
 'bert_svd_Review_1',
 'bert_svd_Review_2',
@@ -324,66 +320,69 @@ if __name__ == '__main__':
 
 ######### LightGBM #############################################################
 
-    # lgb_features = features
+    lgb_features = features
 
-    # # CV設定の読み込み
-    # cv_setting = get_cv_info(random_state=86)
-    # # run nameの設定
-    # run_name = get_run_name(cv_setting, model_type="lgb")
-    # dir_name = MODEL_DIR_NAME + run_name + '/'
-    # # runディレクトリの作成。ここにlogなどが吐かれる
-    # my_makedirs(dir_name)  
-    # # ファイルの設定を読み込む
-    # file_setting = get_file_info()
-    # # 学習の設定を読み込む
-    # run_setting = get_run_info()
-    # # run_setting["hopt"] = "lgb_hopt" # パラメータチューニングを行う
+    # CV設定の読み込み
+    cv_setting = get_cv_info(random_state=86)
+    # run nameの設定
+    run_name = get_run_name(cv_setting, model_type="lgb")
+    dir_name = MODEL_DIR_NAME + run_name + '/'
+    # runディレクトリの作成。ここにlogなどが吐かれる
+    my_makedirs(dir_name)  
+    # ファイルの設定を読み込む
+    file_setting = get_file_info()
+    # 学習の設定を読み込む
+    run_setting = get_run_info()
+    run_setting["target_enc"] = True
+    run_setting["cat_cols"] = ["OwnerID", "City", "Beds_per_Bedroom", "Bedrooms", "RoomType", "Country"] # "AreaCategory"
+    # run_setting["hopt"] = "lgb_hopt" # パラメータチューニングを行う 
 
 
-    # params = {
-    #     "boosting_type": "gbdt",
-    #     "objective": "fair", # regression
-    #     "metric": "None",
-    #     "learning_rate": 0.1,
-    #     "num_leaves": 31,
-    #     "colsample_bytree": 0.5, # feature_fraction
-    #     "reg_lambda": 5,
-    #     "random_state": 71,
-    #     "num_boost_round": 5000,
-    #     "verbose_eval": False,
-    #     "early_stopping_rounds": 100,
-    #     'max_depth': 3,
-    #     "min_data_in_leaf": 10,
-    #     "num_leaves": 31,
-    # }
+    params = {
+        "boosting_type": "gbdt",
+        "objective": "fair",
+        "metric": "None",
+        "learning_rate": 0.1,
+        "num_leaves": 31,
+        "colsample_bytree": 0.5, # feature_fraction
+        "subsample": 0.5,
+        "reg_lambda": 5,
+        "random_state": 71,
+        "num_boost_round": 5000,
+        "verbose_eval": False,
+        "early_stopping_rounds": 100,
+        'max_depth': 3,
+        "min_data_in_leaf": 10,
+        "num_leaves": 31,
+    }
 
-    # # runnerクラスをインスタンス化
-    # runner = Runner(run_name, ModelLGB, lgb_features, params, file_setting, cv_setting, run_setting)
+    # runnerクラスをインスタンス化
+    runner = Runner(run_name, ModelLGB, lgb_features, params, file_setting, cv_setting, run_setting)
 
-    # # 今回の学習で使用する特徴量名を取得
-    # use_feature_name = runner.get_feature_name() 
-    # # 今回の学習で使用するパラメータを取得
-    # use_params = runner.get_params()
-    # # モデルのconfigをjsonで保存
-    # key_list = ['load_features', 'use_features', 'model_params', 'file_setting', 'cv_setting', "run_setting"]
-    # value_list = [features, use_feature_name, use_params, file_setting, cv_setting, run_setting]
-    # save_model_config(key_list, value_list, dir_name, run_name)
+    # 今回の学習で使用する特徴量名を取得
+    use_feature_name = runner.get_feature_name() 
+    # 今回の学習で使用するパラメータを取得
+    use_params = runner.get_params()
+    # モデルのconfigをjsonで保存
+    key_list = ['load_features', 'use_features', 'model_params', 'file_setting', 'cv_setting', "run_setting"]
+    value_list = [features, use_feature_name, use_params, file_setting, cv_setting, run_setting]
+    save_model_config(key_list, value_list, dir_name, run_name)
     
-    # # runnerの学習
-    # runner.run_train_cv()  
+    # runnerの学習
+    runner.run_train_cv()  
 
-    # # feature_importanceを計算・描画
-    # ModelLGB.calc_feature_importance(dir_name, run_name, use_feature_name)  
-    #  # learning curveを描画
-    # ModelLGB.plot_learning_curve(dir_name, run_name, eval_metric="mape") 
+    # feature_importanceを計算・描画
+    ModelLGB.calc_feature_importance(dir_name, run_name, use_feature_name)  
+     # learning curveを描画
+    ModelLGB.plot_learning_curve(dir_name, run_name, eval_metric="mape") 
 
-    # # 予測
-    # runner.run_predict_cv()  
+    # 予測
+    runner.run_predict_cv()  
 
-    # # submissionファイルの作成
-    # lgb_preds = Util.load_df_pickle(dir_name + f'{run_name}-pred.pkl') # テストデータに対する予測値の読み込み
-    # lgb_preds = np.expm1(lgb_preds) # 対数変換を戻す
-    # Submission.create_submission(run_name, dir_name, lgb_preds)  # submit作成
+    # submissionファイルの作成
+    lgb_preds = Util.load_df_pickle(dir_name + f'{run_name}-pred.pkl') # テストデータに対する予測値の読み込み
+    lgb_preds = np.expm1(lgb_preds) # 対数変換を戻す
+    Submission.create_submission(run_name, dir_name, lgb_preds)  # submit作成
 
 
 
@@ -403,6 +402,7 @@ if __name__ == '__main__':
     file_setting = get_file_info()
     # 学習の設定を読み込む
     run_setting = get_run_info()
+    run_setting["cat_cols"] = ["OwnerID", "City", "Beds_per_Bedroom", "Bedrooms", "RoomType", "Country"]
     # run_setting["hopt"] = "xgb_hopt"
 
     # xgbパラメータを設定する
@@ -410,7 +410,7 @@ if __name__ == '__main__':
         'booster': 'gbtree',
         'objective': 'reg:pseudohubererror',
         "eval_metric": "mape",
-        'eta': 0.3,
+        'eta': 0.01,
         'gamma': 0.0,
         'alpha': 0.0,
         'lambda': 1.0,
@@ -419,9 +419,9 @@ if __name__ == '__main__':
         'subsample': 0.8,
         'colsample_bytree': 0.8,
         'random_state': 71,
-        "verbose": False,
+        "verbose": True,
         'num_round': 5000,
-        'early_stopping_rounds': 200,
+        'early_stopping_rounds': 100,
     }
 
     # インスタンス生成
@@ -447,106 +447,102 @@ if __name__ == '__main__':
 
     # submissionファイルの作成
     xgb_preds = Util.load_df_pickle(dir_name + f'{run_name}-pred.pkl')
-    lgb_preds = np.expm1(xgb_preds) # 対数変換を戻す
+    xgb_preds = np.expm1(xgb_preds) # 対数変換を戻す
     Submission.create_submission(run_name, dir_name, xgb_preds)  # submit作成
 
     
 
 
 
-# ##### ニューラルネットワーク ###########################################################
+##### ニューラルネットワーク ###########################################################
 
-#     nn_features = features
+    nn_features = features
 
-#     # CV設定の読み込み
-#     cv_setting = get_cv_info(random_state=53)
+    # CV設定の読み込み
+    cv_setting = get_cv_info(random_state=53)
+    # run nameの設定
+    run_name = get_run_name(cv_setting, model_type="nn")
+    dir_name = MODEL_DIR_NAME + run_name + '/'
+    # runディレクトリの作成。ここにlogなどが吐かれる
+    my_makedirs(dir_name)  
+    # ファイルの設定を読み込む
+    file_setting = get_file_info()
+    file_setting["train_file_name"] = "nn_train.pkl"
+    file_setting["test_file_name"] = "nn_test.pkl"
+    # 学習の設定を読み込む
+    run_setting = get_run_info()
+    run_setting["cat_cols"] = ["OwnerID", "City", "Beds_per_Bedroom", "Bedrooms", "RoomType", "Country"]
+    # run_setting["hopt"] = "nn_hopt"
 
-#     # run nameの設定
-#     run_name = get_run_name(cv_setting, model_type="nn")
-#     dir_name = MODEL_DIR_NAME + run_name + '/'
+    # モデルのパラメータ
+    params = {
+        "num_classes": 1, 
+        'input_dropout': 0.0,
+        'hidden_layers': 3,
+        'hidden_units': 96,
+        'hidden_activation': 'relu',
+        'hidden_dropout': 0.1,
+        'batch_norm': 'before_act',
+        "output_activation": None,
+        'optimizer': {'type': 'adam', 'lr': 0.1},
+        "loss": 'mean_absolute_percentage_error',
+        "metrics": "mean_absolute_percentage_error", # カスタム評価関数も使える
+        'batch_size': 64,
+    }
+    # params = {
+    #     "num_classes": 1,
+    #     "input_dropout": 0.1,
+    #     "hidden_layers": 4.0,
+    #     "hidden_units": 160.0,
+    #     "hidden_activation": "relu",
+    #     "hidden_dropout": 0.30000000000000004,
+    #     "batch_norm": "no",
+    #     "output_activation": "sigmoid",
+    #     "optimizer": {
+    #         "lr": 0.009838711682220185,
+    #         "type": "sgd"
+    #     },
+    #     "loss": "binary_crossentropy",
+    #     "metrics": "accuracy",
+    #     "batch_size": 64.0
+    # }
 
-#     my_makedirs(dir_name)  # runディレクトリの作成。ここにlogなどが吐かれる
+    # インスタンス生成
+    runner = Runner(run_name, ModelNN, nn_features, params, file_setting, cv_setting, run_setting)
 
-#     # ファイルの設定を読み込む
-#     file_setting = get_file_info()
+    # 今回の学習で使用した特徴量名を取得
+    use_feature_name = runner.get_feature_name() 
+    # 今回の学習で使用したパラメータを取得
+    use_params = runner.get_params()
+    # モデルのconfigをjsonで保存
+    key_list = ['load_features', 'use_features', 'model_params', 'file_setting', 'cv_setting', "run_setting"]
+    value_list = [features, use_feature_name, use_params, file_setting, cv_setting, run_setting]
+    save_model_config(key_list, value_list, dir_name, run_name)
     
-#     # 学習の設定を読み込む
-#     run_setting = get_run_info()
-#     run_setting["hopt"] = False
+    # 学習
+    runner.run_train_cv()
 
-#     # モデルのパラメータ
-#     params = {
-#         "num_classes": 1, 
-#         'input_dropout': 0.0,
-#         'hidden_layers': 3,
-#         'hidden_units': 96,
-#         'hidden_activation': 'relu',
-#         'hidden_dropout': 0.2,
-#         'batch_norm': 'before_act',
-#         "output_activation": "sigmoid",
-#         'optimizer': {'type': 'adam', 'lr': 0.000005},
-#         "loss": "binary_crossentropy", 
-#         "metrics": "accuracy", # カスタム評価関数も使える
-#         'batch_size': 64,
-#     }
-#     # params = {
-#     #     "num_classes": 1,
-#     #     "input_dropout": 0.1,
-#     #     "hidden_layers": 4.0,
-#     #     "hidden_units": 160.0,
-#     #     "hidden_activation": "relu",
-#     #     "hidden_dropout": 0.30000000000000004,
-#     #     "batch_norm": "no",
-#     #     "output_activation": "sigmoid",
-#     #     "optimizer": {
-#     #         "lr": 0.009838711682220185,
-#     #         "type": "sgd"
-#     #     },
-#     #     "loss": "binary_crossentropy",
-#     #     "metrics": "accuracy",
-#     #     "batch_size": 64.0
-#     # }
+    # 学習曲線を描画
+    ModelNN.plot_learning_curve(dir_name, run_name)  
 
-#     runner = Runner(run_name, ModelNN, nn_features, params, file_setting, cv_setting, run_setting)
+    # 予測
+    runner.run_predict_cv()  
 
-#     # 今回の学習で使用した特徴量名を取得
-#     use_feature_name = runner.get_feature_name() 
-
-#     # 今回の学習で使用したパラメータを取得
-#     use_params = runner.get_params()
-
-#     # モデルのconfigをjsonで保存
-#     key_list = ['load_features', 'use_features', 'model_params', 'file_setting', 'cv_setting', "run_setting"]
-#     value_list = [features, use_feature_name, use_params, file_setting, cv_setting, run_setting]
-#     save_model_config(key_list, value_list, dir_name, run_name)
-    
-#     # 学習
-#     if cv_setting.get('method') == 'None':
-#         runner.run_train_all()  # 全データで学習
-#         runner.run_predict_all()  # 予測
-#     else:
-#         runner.run_train_cv()  # 学習
-#         ModelNN.plot_learning_curve(run_name)  # 学習曲線を描画
-#         runner.run_predict_cv()  # 予測
-
-#     # submissionファイルの作成
-#     # 今回は,出力が確率なので,閾値の最適化後にラベル変換
-#     train_labels = pd.read_pickle(FEATURE_DIR_NAME + f'{file_setting.get("train_file_name")}')[run_setting.get("target")]
-#     nn_train_probs = Util.load_df_pickle(dir_name + f'{run_name}-train_preds.pkl')
-#     nn_probs = Util.load_df_pickle(dir_name + f'{run_name}-pred.pkl')
-#     nn_preds = get_label(train_labels, nn_train_probs, nn_probs)
-
-#     Submission.create_submission(run_name, dir_name, nn_preds)  # submit作成
+    # submissionファイルの作成
+    nn_preds = Util.load_df_pickle(dir_name + f'{run_name}-pred.pkl')
+    nn_preds = np.expm1(nn_preds)
+    Submission.create_submission(run_name, dir_name, nn_preds)  # submit作成
 
 
 
-# ##### アンサンブル ####################################################################
+##### アンサンブル ####################################################################
 
-#     run_name = get_run_name(cv_setting, "ensemble")
+    run_name = get_run_name(cv_setting, "ensemble")
 
-#     # アンサンブル
-#     em_train_probs = xgb_train_probs*0.35 + lgb_train_probs*0.35 + nn_train_probs*0.3
-#     em_probs = xgb_probs*0.35 + lgb_probs*0.35 + nn_probs*0.3
-#     em_preds = get_label(train_labels, em_train_probs, em_probs)
+    # アンサンブル
+    # em_train_probs = xgb_train_probs*0.35 + lgb_train_probs*0.35 + nn_train_probs*0.3
+    # em_probs = xgb_probs*0.35 + lgb_probs*0.35 + nn_probs*0.3
+    # em_preds = get_label(train_labels, em_train_probs, em_probs)
+    em_preds = xgb_preds*0.35 + lgb_preds*0.35 + nn_preds*0.3
 
-#     Submission.create_submission(run_name, dir_name, em_preds)  # submit作成
+    Submission.create_submission(run_name, dir_name, em_preds)  # submit作成
