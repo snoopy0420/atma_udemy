@@ -6,8 +6,8 @@ code/__pycache__/*
 code/Untitled.ipynb
 data/external/*
 !data/external/.gitkeep
-# data/features/*
-# !data/features/.gitkeep
+data/features/*
+!data/features/.gitkeep
 data/figures/*
 !data/figures/.gitkeep
 data/raw/*
@@ -16,8 +16,8 @@ data/submission/*
 !data/submission/.gitkeep
 models/*
 !models/.gitkeep
-# notebooks/*
-# !notebooks/.gitkeep
+notebooks/*
+!notebooks/.gitkeep
 *.gsheet
 *.bin
 *.pt
