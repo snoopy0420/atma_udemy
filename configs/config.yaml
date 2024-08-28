@@ -1,10 +1,15 @@
 SETTING:
-  MODEL_DIR_NAME: "../models/" # 学習結果の諸々を保存するディレクトリ
-  SUB_DIR_NAME: "../data/submission/" # sample提出ファイル保存ディレクトリ
-  SAMPLE_SUB_NAME: "sample_submission.csv" # sample_submissionファイルの名前
-  RAW_DATA_DIR_NAME: "../data/raw/" # オリジナルデータ
-  FEATURE_DIR_NAME: "../data/features/" # オリジナルデータの格納先ディレクトリ
-  FIGURE_DIR_NAME: "../data/figures/" # 図表の保存先ディレクトリ
-  TARGET: "Price" # 目的変数
-  REMOVE_COLS: ['Price'] # trainデータから削除するカラム
-  HOME_DIR_NAME: "../" 
+  DIR_HOME: "/Users/ishizuka/pyworks/Competitions/signate_signatecup2024/" # プロジェクトのホームディレクトリ
+  DIR_MODEL: "../models/" # 学習結果の諸々を保存するディレクトリ
+  DIR_SUBMISSION: "../data/submission/" # sample提出ファイル保存ディレクトリ
+  FILE_NAME_SAMPLE_SUBMISSION: "sample_submit.csv" # sample_submissionファイルの名前
+  FILE_NAME_TRAIN: "train.csv" # trainデータの名前
+  FILE_NAME_TEST: "test.csv" # testデータの名前
+  DIR_RAW_DATA: "../data/raw/" # オリジナルデータ
+  DIR_INTERIM: "../data/interim/" # オリジナルデータ
+  DIR_FEATURE: "../data/features/" # 特徴量データの格納先ディレクトリ
+  DIR_FIGURE: "../data/figures/" # 図表の保存先ディレクトリ
+  DIR_LOG: "../logs/" # ログの保存先ディレクトリ
+  TARGET_COL: "ProdTaken" # 目的変数
+  REMOVE_COLS: ['ProdTaken'] # trainデータから削除するカラム
+  KEY_COL: ["id"] # 顧客ID

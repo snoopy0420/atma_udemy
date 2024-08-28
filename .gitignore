@@ -14,10 +14,16 @@ data/raw/*
 !data/raw/.gitkeep
 data/submission/*
 !data/submission/.gitkeep
+data/interim/*
+!data/interim/.gitkeep
+logs/*
+!logs/.gitkeep
 models/*
 !models/.gitkeep
 notebooks/*
 !notebooks/.gitkeep
+!notebooks/EDA.ipynb
+!notebooks/baseline.ipynb
 *.gsheet
 *.bin
 *.pt
