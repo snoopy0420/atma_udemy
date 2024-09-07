@@ -11,5 +11,5 @@ SETTING:
   DIR_FIGURE: "../data/figures/" # 図表の保存先ディレクトリ
   DIR_LOG: "../logs/" # ログの保存先ディレクトリ
   TARGET_COL: "ProdTaken" # 目的変数
-  REMOVE_COLS: ['ProdTaken'] # trainデータから削除するカラム
+  REMOVE_COLS: [] # trainデータから削除するカラム
   KEY_COL: ["id"] # 顧客ID

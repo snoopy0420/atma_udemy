@@ -24,6 +24,7 @@ notebooks/*
 !notebooks/.gitkeep
 !notebooks/EDA.ipynb
 !notebooks/baseline.ipynb
+!notebooks/install.ipynb
 *.gsheet
 *.bin
 *.pt

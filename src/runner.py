@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import japanize_matplotlib
 import seaborn as sns
 import sys,os
 import shap
@@ -12,6 +11,7 @@ from typing import Callable, List, Optional, Tuple, Union
 # from hyperopt import fmin, tpe, hp, STATUS_OK, Trials
 from sklearn.model_selection import KFold
 from sklearn.metrics import roc_auc_score
+import optuna
 
 CONFIG_FILE = '../configs/config.yaml'
 with open(CONFIG_FILE, encoding="utf-8") as file:
@@ -20,6 +20,8 @@ FIGURE_DIR_NAME = yml['SETTING']['DIR_FIGURE']
 DIR_HOME = yml['SETTING']['DIR_HOME']
 DIR_MODEL = yml['SETTING']['DIR_MODEL']
 DIR_FIGURE = yml['SETTING']['DIR_FIGURE']
+TARGET_COL = yml['SETTING']['TARGET_COL']
+REMOVED_COL = yml['SETTING']['REMOVE_COLS']
 
 sys.path.append(DIR_HOME)
 from src.model import Model
@@ -42,37 +44,59 @@ class Runner:
                  df_test: pd.DataFrame, # テストデータ
                  run_setting: dict,
                  logger,
+                 memo,
                  ): 
         
-        # 評価関数
+        self.memo = memo
+        self.logger = logger
         self.metrics = roc_auc_score
         self.run_name = run_name
         self.model_cls = model_cls
         self.params = params
         self.key = run_setting.get('key')
-        self.target = run_setting.get('target')
         self.calc_shap = run_setting.get('calc_shap')
         self.save_train_pred = run_setting.get('save_train_pred')
-        self.hopt = run_setting.get("hopt")
-        self.target_enc = run_setting.get("target_enc")
-        self.target_enc_col = run_setting.get("target_enc_col")
+        self.tune_params = run_setting.get('tune_params')
+        self.target_encoder = run_setting.get("target_encoder")
         # CVの設定
         self.n_splits = 5
         self.random_state = 2024
         self.shuffle = True
         # データのセット
-        self.train_x = df_train.drop(columns=[self.target])
-        self.test_x = df_test.drop(columns=[self.target])
-        self.train_y = df_train[self.target]
-        self.test_y = df_test[self.target]
+        self.df_train = df_train
+        self.df_test = df_test
         self.out_dir_name = DIR_MODEL
-        self.logger = logger
+
         if self.calc_shap:
             self.shap_values = np.zeros(self.train_x.shape)
-        if self.hopt != False:
-            # self.paramsを上書きする
-            self.run_hopt()
-            self.shap_values = np.zeros(self.train_x.shape)
+        # if self.hopt != False:
+        #     # self.paramsを上書きする
+        #     self.run_hopt()
+        #     self.shap_values = np.zeros(self.train_x.shape)
+
+
+    def build_model(self, i_fold: Union[int, str]) -> Model:
+        """クロスバリデーションでのfoldを指定して、モデルの作成を行う
+        :param i_fold: foldの番号
+        :return: モデルのインスタンス
+        """
+        # run名、i_fold、モデルのクラス名からモデルを作成する
+        run_fold_name = f'{self.run_name}-fold{i_fold}'
+        model = self.model_cls(run_fold_name, self.params)
+        return model
+    
+    
+    def after_split_process(self, tr, va):
+        """データセットの分割後に行う処理
+        """
+        # target encoding
+        if self.target_encoder is not None:
+            tr_ = self.target_encoder.fit_transform(tr)
+            va_ = self.target_encoder.transform(va)
+            tr = pd.merge(tr, tr_, on=self.key, how='left')
+            va = pd.merge(va, va_, on=self.key, how='left')
+
+        return tr, va
 
     
     def train_fold(self, i_fold: Union[int, str], metrics=None) -> Tuple[Model, Optional[np.array], Optional[np.array], Optional[float]]:
@@ -84,15 +108,24 @@ class Runner:
 
         # データセットの準備
         # 学習データ・バリデーションデータのindexを取得
-        tr_idx, va_idx = Validation.load_index_k_fold(i_fold, self.train_x, self.n_splits, self.shuffle, self.random_state)
+        tr_idx, va_idx = Validation.load_index_k_fold(i_fold, self.df_train, self.n_splits, self.shuffle, self.random_state)
         # 学習データ・バリデーションデータをセットする
-        tr_x, tr_y = self.train_x.iloc[tr_idx], self.train_y.iloc[tr_idx]
-        va_x, va_y = self.train_x.iloc[va_idx], self.train_y.iloc[va_idx]
+        tr = self.df_train.iloc[tr_idx]
+        va = self.df_train.iloc[va_idx]
 
-        # target encoding
-        if self.target_enc:
-            tr_x, va_x = self.get_target_encoding(tr_x, tr_y, va_x, self.target_enc_col) 
+        # データセットの分割後に行う処理
+        tr, va = self.after_split_process(tr, va)
+        
+        # データセットの分割
+        tr_x = tr.drop(columns=[TARGET_COL]+REMOVED_COL)
+        tr_y = tr[TARGET_COL]
+        va_x = va.drop(columns=[TARGET_COL]+REMOVED_COL)
+        va_y = va[TARGET_COL]
 
+        # パラメータチューニングを行う
+        if self.tune_params:
+            self.tune_param(tr_x, tr_y, va_x, va_y)
+        
         # 学習を行う
         model = self.build_model(i_fold)
         model.train(tr_x, tr_y, va_x, va_y)
@@ -109,7 +142,34 @@ class Runner:
         # モデル、インデックス、予測値、評価を返す
         return model, va_idx, va_pred, score
 
-    
+    def tune_param(self, tr_x, tr_y, va_x, va_y):
+        """パラメータチューニングを行う
+        """
+        # optunaによるパラメータ探索の実行
+        # パラメータ探索の範囲
+        def objective(trial):
+            params = self.params.copy()
+            params['num_leaves'] = trial.suggest_int('num_leaves', 2, 256)
+            params['max_depth'] = trial.suggest_int('max_depth', 1, 9)
+            params['learning_rate'] = trial.suggest_float('learning_rate', 1e-8, 1.0)
+            params['subsample'] = trial.suggest_float('subsample', 1e-8, 1.0)
+            params['min_data_in_leaf'] = trial.suggest_int('min_data_in_leaf', 2, 256)
+            params['reg_alpha'] = trial.suggest_float('reg_alpha', 1e-8, 1.0)
+            params['reg_lambda'] = trial.suggest_float('reg_lambda', 1e-8, 1.0)
+            model = self.model_cls(self.run_name, params)
+            model.train(tr_x, tr_y, va_x, va_y)
+            va_pred = model.predict(va_x)
+            score = self.metrics(va_y, va_pred)
+            return score
+        self.logger.info(f'{self.run_name} - start tuning')
+        study = optuna.create_study(direction='maximize')
+        study.optimize(objective, n_trials=10)
+        for key, value in study.best_params.items():
+            self.params[key] = value
+        self.logger.info(f'{self.run_name} - end tuning')
+        
+
+
     def run_train_cv(self) -> None:
         """CVでの学習・評価を行う
         学習・評価とともに、各foldのモデルの保存、スコアのログ出力についても行う
@@ -150,8 +210,9 @@ class Runner:
             Util.dump_df_pickle(pd.DataFrame(va_preds), self.out_dir_name + f'{self.run_name}-train_preds.pkl')
 
         # 評価結果の保存
+        self.logger.result(f"memo: {self.memo}")
         self.logger.result_scores(self.run_name, scores)
-        self.logger.result("mean: {}, std: {}".format(np.mean(scores), np.std(scores)))
+        self.logger.result(f"mean: {np.mean(scores)}, std: {np.std(scores)}")
 
         # shap feature importanceデータの保存
         if self.calc_shap:
@@ -165,28 +226,25 @@ class Runner:
         self.logger.info(f'{self.run_name} - start prediction cv')
         preds = []
 
-        # target encoding
-        if self.target_enc:
-            self.test_x = self.get_test_target_enc(self.train_x, self.train_y,self.test_x, self.target_enc_col) 
-
         # 各foldのモデルで予測を行う
         for i_fold in range(self.n_splits):
             self.logger.info(f'{self.run_name} - start prediction fold:{i_fold}')
             model = self.build_model(i_fold)
             model.load_model()
-            pred = model.predict(self.test_x)
+            pred = model.predict(self.df_test.drop(columns=REMOVED_COL))
             preds.append(pred)
             self.logger.info(f'{self.run_name} - end prediction fold:{i_fold}')
 
-        # 予測の平均値を出力する
+        # 予測の平均値を算出する
         pred_avg = np.mean(preds, axis=0)
-
-        df_pred = pd.concat([self.test_x[self.key].reset_index(drop=True),
+        df_pred = pd.concat([self.df_test[self.key].reset_index(drop=True),
                              pd.DataFrame({"pred":pred_avg}).reset_index(drop=True)], axis=1)
 
         # 予測結果の保存
-        Util.dump_df_pickle(df_pred, os.path.join(self.out_dir_name, f'{self.run_name}-pred.pkl'))
+        path_output = os.path.join(self.out_dir_name, f'{self.run_name}-pred.pkl')
+        Util.dump_df_pickle(df_pred, path_output)
 
+        self.logger.info(f'output predict : {path_output}')
         self.logger.info(f'{self.run_name} - end prediction cv')
 
 
@@ -203,7 +261,7 @@ class Runner:
         # 各foldの平均を算出
         # 各foldの標準偏差を算出
         df_feat_imp_ = pd.DataFrame({
-            'feature': self.train_x.columns,
+            'feature': self.df_test.drop(columns=REMOVED_COL).columns,
             'mean': df_feat_imp.mean(axis=1),
             'std': df_feat_imp.std(axis=1)
         }).sort_values('mean')
@@ -239,23 +297,16 @@ class Runner:
         ax2.grid(False)
 
         # 図を保存
-        plt.savefig(os.path.join(DIR_FIGURE, f'{self.run_name}_fi_gain.png'), dpi=300, bbox_inches="tight")
+        path_output = os.path.join(DIR_FIGURE, f'{self.run_name}_fi_gain.png')
+        plt.savefig(path_output, dpi=300, bbox_inches="tight")
         plt.close()
+
+        self.logger.info(f"output feature importance : {path_output}")
 
 
 
 
 ####### model utils ##################################################################
-
-    def build_model(self, i_fold: Union[int, str]) -> Model:
-        """クロスバリデーションでのfoldを指定して、モデルの作成を行う
-        :param i_fold: foldの番号
-        :return: モデルのインスタンス
-        """
-        # run名、i_fold、モデルのクラス名からモデルを作成する
-        run_fold_name = f'{self.run_name}-fold{i_fold}'
-        model = self.model_cls(run_fold_name, self.params)
-        return model
 
 
     def shap_feature_importance(self) -> None:
@@ -278,129 +329,6 @@ class Runner:
         plt.savefig(FIGURE_DIR_NAME + self.run_name + '_shap.png', dpi=300, bbox_inches="tight")
         plt.close()
 
-
-    def run_hopt(self):
-        """パラメータチューニングを行い、self.paramsを上書きする
-        """
-        # モデルにパラメータを指定して学習・予測させた場合のスコアを返す関数を定義
-        def score(params):
-            self.logger.info(f'{self.run_name} - start hopt eval - params  {params}')
-
-            if (self.hopt == "xgb_hopt") | (self.hopt == "lgb_hopt"):
-                params["max_depth"] = int(params["max_depth"])
-            if (self.hopt == "lgb_hopt"):
-                params["num_leaves"] = int(params["num_leaves"])
-                params["min_data_in_leaf"] = int(params["min_data_in_leaf"])
-
-            for param in params.keys():
-                self.params[param] = params[param] # 実験するパラメータをセット
-            i_fold = np.random.randint(0, self.n_splits) # foldの選択はランダムにする
-            model, va_idx, va_pred, score = self.train_fold(i_fold, metrics=self.metrics) # 1foldで学習
-            self.logger.info(f'{self.run_name} - end hopt eval - score {score}')
-
-            # 情報を記録しておく
-            history.append((params, score))
-
-            return {'loss': score, 'status': STATUS_OK}
-
-        # 探索空間の設定
-        if self.hopt == "xgb_hopt":
-            param_space = {
-                'min_child_weight': hp.loguniform('min_child_weight', np.log(0.1), np.log(10)),
-                'max_depth': hp.quniform('max_depth', 3, 9, 1),
-                'subsample': hp.quniform('subsample', 0.6, 0.95, 0.05),
-                'colsample_bytree': hp.quniform('colsample_bytree', 0.6, 0.95, 0.05),
-                'gamma': hp.loguniform('gamma', np.log(1e-8), np.log(1.0)),
-                # 余裕があればalpha, lambdaも調整する
-                'alpha' : hp.loguniform('alpha', np.log(1e-8), np.log(1.0)),
-                'lambda' : hp.loguniform('lambda', np.log(1e-6), np.log(10.0)),
-            }
-        elif self.hopt == "lgb_hopt":
-            param_space = {
-                'num_leaves': hp.quniform('num_leaves', 50, 200, 10),
-                'max_depth': hp.quniform('max_depth', 3, 10, 1),
-                'min_data_in_leaf': hp.quniform('min_data_in_leaf',  5, 25, 2),
-                'colsample_bytree': hp.uniform('colsample_bytree', 0.5, 1.0),
-                'subsample': hp.uniform('subsample', 0.5, 1.0)  
-            }
-        elif self.hopt == "nn_hopt":
-            param_space = {
-                'input_dropout': hp.quniform('input_dropout', 0, 0.2, 0.05),
-                'hidden_layers': hp.quniform('hidden_layers', 2, 4, 1),
-                'hidden_units': hp.quniform('hidden_units', 32, 256, 32),
-                'hidden_activation': hp.choice('hidden_activation', ['prelu', 'relu']),
-                'hidden_dropout': hp.quniform('hidden_dropout', 0, 0.3, 0.05),
-                'batch_norm': hp.choice('batch_norm', ['before_act', 'no']),
-                'optimizer': hp.choice('optimizer', [{'type': 'adam', 'lr': hp.loguniform('adam_lr', np.log(0.000001), np.log(0.001))},
-                                                     {'type': 'sgd', 'lr': hp.loguniform('sgd_lr', np.log(0.000001), np.log(0.001))}]),
-                'batch_size': hp.quniform('batch_size', 32, 128, 32),
-            }
-
-
-        # hyperoptによるパラメータ探索の実行
-        max_evals = 25  # 試行回数
-        trials = Trials()
-        history = []
-        np.random.seed(20) # foldの選択seed
-        fmin(score, param_space, algo=tpe.suggest, trials=trials, max_evals=max_evals)
-
-        # 記録した情報からパラメータとスコアを出力する
-        history = sorted(history, key=lambda tpl: tpl[1])
-        best = history[0]
-        self.logger.info(f'{self.run_name} - best paramns {best[0]}')
-        self.logger.info(f'{self.run_name} - best score {best[1]}')
-
-        # self.paramsを上書き
-        for param in best[0].keys():
-            self.params[param] = best[0][param]
-
-    
-    def get_target_encoding(self, tr_x, tr_y, va_x, cat_cols):
-        """学習データとバリデーションデータのtarget encodingを実行する
-        """
-        if cat_cols == "all":
-            cat_cols = list(tr_x.dtypes[tr_x.dtypes=="object"].index) # 全てのカテゴリ
-            # cat_cols = list(tr_x.columns) # 全てのカラム
-
-        # 変数をループしてtarget encoding
-        print("target_encoding", cat_cols)
-        for c in cat_cols:
-            data_tmp = pd.DataFrame({c: tr_x[c], 'target': tr_y})
-
-            # バリデーションデータ(va_x)を変換
-            # 学習データ全体で各カテゴリにおけるtargetの平均を計算
-            target_mean = data_tmp.groupby(c)['target'].mean()
-            va_x.loc[:, c] = va_x[c].map(target_mean)  # 置換
-            # va_x = va_x.fillna(data_tmp["target"].mean()) # nanになってしまったところは平均値で埋める
-
-            # 学習データ(tr_x)を変換
-            tmp = np.repeat(np.nan, tr_x.shape[0]) # 変換後の値を格納する配列を準備
-            kf_encoding = KFold(n_splits=10, shuffle=True, random_state=72)
-            for idx_1, idx_2 in kf_encoding.split(tr_x):
-                # out-of-foldで各カテゴリにおける目的変数の平均を計算
-                target_mean = data_tmp.iloc[idx_1].groupby(c)['target'].mean()
-                # 変換後の値を一時配列に格納
-                tmp[idx_2] = tr_x[c].iloc[idx_2].map(target_mean)
-            tr_x.loc[:, c] = tmp# 置換
-            # tr_x = tr_x.fillna(data_tmp["target"].mean()) # nanになってしまったところは平均値で埋める
-
-        return tr_x, va_x
-
-    def get_test_target_enc(self, train_x, train_y, test_x, cat_cols):
-        """テストデータのtarget encodingを実行する
-        """
-        if cat_cols == "all":
-            cat_cols = list(train_x.dtypes[train_x.dtypes=="object"].index)
-            # cat_cols = list(train_x.columns) # 全てのカラム
-
-        for c in cat_cols:
-            # テストデータを変換
-            data_tmp = pd.DataFrame({c: train_x[c], 'target': train_y})
-            target_mean = data_tmp.groupby(c)['target'].mean()
-            test_x[c] = test_x[c].map(target_mean)
-            test_x = test_x.fillna(data_tmp["target"].mean()) # nanになってしまったところは平均値で埋める
-
-        return test_x
 
 
     def get_feature_name(self):
