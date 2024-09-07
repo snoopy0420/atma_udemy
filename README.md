@@ -1,12 +1,9 @@
 # 概要
 
-※2024/08/12
-Signate Cup2024
+※2024/
+MUFGデータサイエンスコンペ2024
 
 ## 環境
-python: 3.7.13
+python: 3.9
 
 ## 実行
-```sh
-python run.py
-```
