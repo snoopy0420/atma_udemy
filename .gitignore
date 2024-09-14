@@ -11,7 +11,12 @@ data/features/*
 data/figures/*
 !data/figures/.gitkeep
 data/raw/*
-!data/raw/.gitkeep
+!data/raw/external
+data/raw/external/*
+!data/raw/external/.gitkeep
+!data/raw/input
+data/raw/input/*
+!data/raw/input/.gitkeep
 data/submission/*
 !data/submission/.gitkeep
 data/interim/*

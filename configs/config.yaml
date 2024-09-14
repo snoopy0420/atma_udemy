@@ -1,15 +1,17 @@
 SETTING:
-  DIR_HOME: "/Users/ishizuka/pyworks/Competitions/signate_signatecup2024/" # プロジェクトのホームディレクトリ
-  DIR_MODEL: "../models/" # 学習結果の諸々を保存するディレクトリ
-  DIR_SUBMISSION: "../data/submission/" # sample提出ファイル保存ディレクトリ
+  DIR_HOME: "/Users/ishizuka/pyworks/Competitions/signate_mufgcup2024/" # プロジェクトのホームディレクトリ
+  DIR_MODEL: "/Users/ishizuka/pyworks/Competitions/signate_mufgcup2024/models/" # 学習結果の諸々を保存するディレクトリ
+  DIR_SUBMISSION: "/Users/ishizuka/pyworks/Competitions/signate_mufgcup2024/data/submission/" # sample提出ファイル保存ディレクトリ
+  DIR_INTERIM: "/Users/ishizuka/pyworks/Competitions/signate_mufgcup2024/data/interim/" # オリジナルデータ
+  DIR_FEATURE: "/Users/ishizuka/pyworks/Competitions/signate_mufgcup2024/data/features/" # 特徴量データの格納先ディレクトリ
+  DIR_FIGURE: "/Users/ishizuka/pyworks/Competitions/signate_mufgcup2024/data/figures/" # 図表の保存先ディレクトリ
+  DIR_INPUT: "/Users/ishizuka/pyworks/Competitions/signate_mufgcup2024/data/raw/input" # オリジナルデータ
+  DIR_LOG: "/Users/ishizuka/pyworks/Competitions/signate_mufgcup2024/logs/" # ログの保存先ディレクトリ
   FILE_NAME_SAMPLE_SUBMISSION: "sample_submit.csv" # sample_submissionファイルの名前
-  FILE_NAME_TRAIN: "train.csv" # trainデータの名前
-  FILE_NAME_TEST: "test.csv" # testデータの名前
-  DIR_RAW_DATA: "../data/raw/" # オリジナルデータ
-  DIR_INTERIM: "../data/interim/" # オリジナルデータ
-  DIR_FEATURE: "../data/features/" # 特徴量データの格納先ディレクトリ
-  DIR_FIGURE: "../data/figures/" # 図表の保存先ディレクトリ
-  DIR_LOG: "../logs/" # ログの保存先ディレクトリ
-  TARGET_COL: "ProdTaken" # 目的変数
+  FILE_NAME_STATION: "station.csv" # stationデータの名前
+  FILE_NAME_WEATHER: "weather.csv" # weatherデータの名前
+  FILE_NAME_STATUS: "status.csv" # statusデータの名前
+  FILE_NAME_TRIP: "trip.csv" # tripデータの名前
+  TARGET_COL: "" # 目的変数
   REMOVE_COLS: [] # trainデータから削除するカラム
-  KEY_COL: ["id"] # 顧客ID
+  KEY_COL: [""] # key
