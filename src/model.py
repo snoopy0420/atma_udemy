@@ -21,6 +21,7 @@ class Model(metaclass=ABCMeta):
         self.run_fold_name = run_fold_name
         self.params = params
         self.model = None
+        self.target_col = None 
 
     @abstractmethod
     def train(self, 

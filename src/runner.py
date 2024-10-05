@@ -58,10 +58,6 @@ class Runner:
         self.save_train_pred = run_setting.get('save_train_pred')
         self.tune_params = run_setting.get('tune_params')
         self.target_encoder = run_setting.get("target_encoder")
-        # CVの設定
-        self.n_splits = 5
-        self.random_state = 2024
-        self.shuffle = True
         # データのセット
         self.df_train = df_train
         self.df_test = df_test
@@ -73,6 +69,8 @@ class Runner:
         #     # self.paramsを上書きする
         #     self.run_hopt()
         #     self.shap_values = np.zeros(self.train_x.shape)
+
+        self.initial_date = "2014-09-01"
 
 
     def build_model(self, i_fold: Union[int, str]) -> Model:
@@ -97,15 +95,11 @@ class Runner:
             va = pd.merge(va, va_, on=self.key, how='left')
 
         return tr, va
-
     
-    def train_fold(self, i_fold: Union[int, str], metrics=None) -> Tuple[Model, Optional[np.array], Optional[np.array], Optional[float]]:
-        """foldを指定して学習・評価を行う
-        他のメソッドから呼び出すほか、単体でも確認やパラメータ調整に用いる
-        :param i_fold: foldの番号（すべてのときには'all'とする）, metrics: 評価に用いる関数
-        :return: （モデルのインスタンス、レコードのインデックス、予測値、評価によるスコア）のタプル
-        """
 
+    def crete_train_valid_dateset(self, i_fold: Union[int, str]):
+        """foldを指定して訓練・検証データを準備する
+        """
         # データセットの準備
         # 学習データ・バリデーションデータのindexを取得
         tr_idx, va_idx = Validation.load_index_k_fold(i_fold, self.df_train, self.n_splits, self.shuffle, self.random_state)
@@ -122,25 +116,48 @@ class Runner:
         va_x = va.drop(columns=[TARGET_COL]+REMOVED_COL)
         va_y = va[TARGET_COL]
 
+        return tr_x, tr_y, va_x, va_y
+
+    
+    def train_fold(self, i_fold: Union[int, str], metrics=None) -> Tuple[Model, Optional[np.array], Optional[np.array], Optional[float]]:
+        """foldを指定して学習・評価を行う
+        他のメソッドから呼び出すほか、単体でも確認やパラメータ調整に用いる
+        :param i_fold: foldの番号（すべてのときには'all'とする）, metrics: 評価に用いる関数
+        :return: （モデルのインスタンス、レコードのインデックス、予測値、評価によるスコア）のタプル
+        """
+
+        # データセットの準備
+        tr_x, tr_y, va_x, va_y = self.crete_train_valid_dateset(i_fold)
+
         # パラメータチューニングを行う
-        if self.tune_params:
-            self.tune_param(tr_x, tr_y, va_x, va_y)
+        # tr_tr_x, tr_tr_y, tr_va_x, tr_va_y = split(tr_x, tr_y, va_x, va_y)
+        # if self.tune_params:
+        #     self.tune_param(tr_tr_x, tr_tr_y, tr_va_x, tr_va_y)
         
         # 学習を行う
         model = self.build_model(i_fold)
         model.train(tr_x, tr_y, va_x, va_y)
 
-        # バリデーションデータの予測
-        if self.calc_shap:
-            va_pred, self.shap_values[va_idx[:shap_sampling]] = model.predict_and_shap(va_x, shap_sampling)
-        else:
-            va_pred = model.predict(va_x)
+        # モデル、インデックス、予測値、評価を返す
+        return model
+
+    def metric_fold(self, i_fold: Union[int, str], metrics=None):
+        """foldを指定して評価を行う"""
+
+        # データセットの準備
+        tr_x, tr_y, va_x, va_y = self.crete_train_valid_dateset(i_fold)
+
+        model = self.build_model(i_fold)
+        model.load_model()
+
+        va_pred = model.predict(va_x)
 
         # バリデーションデータの評価
         score = self.metrics(va_y, va_pred)
 
-        # モデル、インデックス、予測値、評価を返す
-        return model, va_idx, va_pred, score
+        return score
+
+
 
     def tune_param(self, tr_x, tr_y, va_x, va_y):
         """パラメータチューニングを行う
@@ -173,37 +190,38 @@ class Runner:
     def run_train_cv(self) -> None:
         """CVでの学習・評価を行う
         学習・評価とともに、各foldのモデルの保存、スコアのログ出力についても行う
+        12ヶ月分の学習と評価を行う
+        12ヶ月
         """
         # ログ
         self.logger.info(f'{self.run_name} - start training cv')
 
-        scores = [] # 各foldのscoreを保存
-        va_idxes = [] # 各foldのvalidationデータのindexを保存
-        va_preds = [] # 各foldのバリデーションデータに対する予測値を保存
-
         # fold毎の学習：train_foldをn_splits回繰り返す
-        for i_fold in range(self.n_splits):
+        for i_fold in pd.date_range(self.initial_date, periods=12, freq='M'):
 
             # 学習を行う
             self.logger.info(f'{self.run_name} fold {i_fold} - start training')
-            model, va_idx, va_pred, score = self.train_fold(i_fold)
-            self.logger.info(f'{self.run_name} fold {i_fold} - end training - score {score}')
+            model = self.train_fold(i_fold)
+            self.logger.info(f'{self.run_name} fold {i_fold} - end training')
 
             # モデルを保存する
             model.save_model()
 
+
+
+    def run_metric_cv(self):
+        # ログ
+        self.logger.info(f'{self.run_name} - start training cv')
+
+        scores = [] # 各foldのscoreを保存
+
+        # fold毎の学習：train_foldをn_splits回繰り返す
+        for i_fold in pd.date_range(self.initial_date, periods=12, freq='M'):
+
+            score = self.metric_fold(i_fold)
+
             # 結果を保持する
             scores.append(score)
-            va_idxes.append(va_idx)
-            va_preds.append(va_pred)
-
-        self.logger.info(f'{self.run_name} - end training cv - score {np.mean(scores)}') # スコアを出力
-
-        # 各foldの結果をまとめる
-        va_idxes = np.concatenate(va_idxes)
-        order = np.argsort(va_idxes)
-        va_preds = np.concatenate(va_preds, axis=0)
-        va_preds = va_preds[order]
 
         # 学習データでの予測結果の保存
         if self.save_train_pred:
@@ -214,9 +232,9 @@ class Runner:
         self.logger.result_scores(self.run_name, scores)
         self.logger.result(f"mean: {np.mean(scores)}, std: {np.std(scores)}")
 
-        # shap feature importanceデータの保存
-        if self.calc_shap:
-            self.shap_feature_importance() # shap値の計算・可視化
+        
+
+        
 
 
     def run_predict_cv(self) -> None:
