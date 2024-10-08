@@ -13,7 +13,7 @@ CONFIG_FILE = '../configs/config.yaml'
 
 with open(CONFIG_FILE, encoding="utf-8") as file:
     yml = yaml.safe_load(file)
-RAW_DATA_DIR_NAME = yml["SETTING"]["DIR_RAW_DATA"]
+DIR_INPUT = yml["SETTING"]["DIR_INPUT"]
 SUB_DIR_NAME = yml["SETTING"]["DIR_SUBMISSION"]
 SAMPLE_SUB_NAME = yml["SETTING"]["FILE_NAME_SAMPLE_SUBMISSION"]
 TARGET = yml["SETTING"]["TARGET_COL"]
@@ -41,6 +41,7 @@ class Util:
 
     @classmethod
     def dump_df_pickle(cls, df, path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         df.to_pickle(path)
 
     @classmethod
@@ -79,8 +80,8 @@ class Logger:
     # 計算結果をコンソールと計算結果用ログに出力
     def result_scores(self, run_name, scores):
         dic = dict()
-        dic['name'] = run_name
-        dic['score'] = np.mean(scores)
+        dic['run_name'] = run_name
+        dic['score_mean'] = np.mean(scores)
         for i, score in enumerate(scores):
             dic[f'score{i}'] = score
         self.result(self.to_ltsv(dic))
@@ -102,7 +103,7 @@ class Submission:
         logger = Logger(dir_name)
         logger.info(f'{run_name} - start create submission')
 
-        submission = pd.read_csv(RAW_DATA_DIR_NAME + SAMPLE_SUB_NAME)
+        submission = pd.read_csv(DIR_INPUT + SAMPLE_SUB_NAME)
         submission.loc[:, TARGET] = preds.iloc[:, 0]
         submission.to_csv(SUB_DIR_NAME + f'{run_name}_submission.csv', index=False, header=True)
 

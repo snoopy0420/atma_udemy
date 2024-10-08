@@ -12,16 +12,12 @@ class Model(metaclass=ABCMeta):
 
     def __init__(self, 
                  run_fold_name: str, 
-                 params: dict
                  ) -> None:
         """コンストラクタ
         run_fold_name: runの名前とfoldの番号を組み合わせた名前
         params: ハイパーパラメータ
         """
         self.run_fold_name = run_fold_name
-        self.params = params
-        self.model = None
-        self.target_col = None 
 
     @abstractmethod
     def train(self, 
@@ -42,7 +38,7 @@ class Model(metaclass=ABCMeta):
     def predict(self, te_x: pd.DataFrame) -> np.array:
         """学習済のモデルでの予測値を返す、分類問題では確率を返す
         :param te_x: バリデーションデータやテストデータの特徴量
-        :return: 予測値(予測確率）
+        :return: station_id,datetime,bikes_availableをカラムに持つpd.DataFrame
         """
         pass
 
