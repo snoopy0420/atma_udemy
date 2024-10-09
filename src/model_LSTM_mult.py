@@ -142,7 +142,7 @@ class model_LSTM_mult(Model):
 
         # モデルの初期化
         self.model = self.LSTMModel(self.input_size, self.hidden_size, self.n_steps)
-        criterion = nn.MSELoss()
+        criterion = nn.L1Loss()
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
 
         # トレーニングループ

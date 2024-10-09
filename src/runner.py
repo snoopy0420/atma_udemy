@@ -8,6 +8,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from typing import Callable, List, Tuple, Union, Optional
 from sklearn.metrics import mean_absolute_error, mean_squared_error
+from tqdm import tqdm
 
 
 CONFIG_FILE = '../configs/config.yaml'
@@ -57,8 +58,9 @@ class TimeseriesModelRunner:
     def metric(self, va_true, va_pred):
         """評価指標の計算
         """
-        # score = mean_absolute_error(va_true, va_pred)
-        score = math.sqrt(mean_squared_error(va_true, va_pred))
+        score = mean_absolute_error(va_true, va_pred)
+        # score = math.sqrt(mean_squared_error(va_true, va_pred))
+        
         return score
 
 
@@ -227,7 +229,7 @@ class TimeseriesModelRunner:
         preds = [] # 各foldの予測値を保存
 
         # fold毎の検証データの予測・評価
-        for i_fold in self.get_cv_folds():
+        for i_fold in tqdm(self.get_cv_folds()):
             # 評価を行う
             score, df_va_pred = self.metric_fold(i_fold)
             # 結果を保持する
@@ -257,7 +259,7 @@ class TimeseriesModelRunner:
         te_preds = []
 
         # fold毎のテストデータの予測
-        for i_fold in self.get_cv_folds():
+        for i_fold in tqdm(self.get_cv_folds()):
             pred = self.predict_fold(i_fold)
             te_preds.append(pred)
         df_te_preds = pd.concat(te_preds, axis=0)
