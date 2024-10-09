@@ -23,7 +23,7 @@ REMOVED_COL = yml['SETTING']['REMOVE_COLS']
 
 sys.path.append(DIR_HOME)
 from src.model import Model
-from src.util import Util, Metric, Validation
+from src.util import Util
 
 
 class TimeseriesModelRunner:
@@ -134,21 +134,8 @@ class TimeseriesModelRunner:
         # 学習済みモデル
         model = self.build_model(i_fold)
         model.load_model()
-
-        # 検証・テスト期間の予測
-        # list_va_te_date = tr_va_te["datetime"].apply(lambda x: x.date()).unique()
-        # list_va_te_true = []
-        # list_va_te_pred = []
-        # for va_te_date in list_va_te_date:
-        #     va_te_datetime = pd.to_datetime(va_te_date)
-        #     va_te = tr_va_te[tr_va_te["datetime"]<=va_te_datetime.replace(hours=0)]
-        #     va_te_true = tr_va_te[(tr_va_te["datetime"]>=va_te_datetime.replace(hours=1))&(tr_va_te["datetime"]<=va_te_datetime.replace(hour=23))]
-        #     va_te_true = va_te_true[self.key_cols + [self.target_col]]
-        #     va_te_pred = model.predict(va_te)
-        #     list_va_te_true.append(va_te_true)  
-        #     list_va_te_pred.append(va_te_pred)
         
-        # # 検証データの予測
+        # 検証データの予測
         list_va_true = []
         list_va_pred = []
         for va_date in list_va_date:
@@ -216,6 +203,10 @@ class TimeseriesModelRunner:
             model.save_model()
             self.logger.info(f'{self.run_name} fold {i_fold.date()} - end training')
 
+        # パラメータの保存
+        path_output = os.path.join(self.out_dir_name, f'params.yaml')
+        Util.jump_json(self.params, path_output)
+
         self.logger.info(f'{self.run_name} - end training cv')
 
 
@@ -249,7 +240,6 @@ class TimeseriesModelRunner:
         self.logger.info(f'output predict : {path_output}')
 
         self.logger.info(f'{self.run_name} - end metric cv')
-
 
 
     def run_predict_cv(self) -> None:

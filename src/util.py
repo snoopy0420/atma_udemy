@@ -1,6 +1,7 @@
 import datetime
 import logging
 import sys,os
+import json
 import numpy as np
 import pandas as pd
 import yaml
@@ -38,6 +39,12 @@ class Util:
     @classmethod
     def load(cls, path):
         return joblib.load(path)
+    
+    @classmethod
+    def jump_json(cls, value, path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w') as f:
+            json.dump(value, f, indent=4)
 
     @classmethod
     def dump_df_pickle(cls, df, path):
