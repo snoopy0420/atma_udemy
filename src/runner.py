@@ -93,7 +93,6 @@ class TimeseriesModelRunner:
         """
         foldを指定して訓練・検証データを準備する
         """
-        # predict=1のデータについて過去24時間分のデータを取得
         tr = self.df_main[self.df_main['datetime'] < i_fold]
         tr_va_te = self.df_main[self.df_main['datetime'] < i_fold+pd.DateOffset(months=1)]
         va_te = tr_va_te[tr_va_te['datetime'] >= i_fold]
@@ -329,7 +328,7 @@ class TimeseriesModelRunner:
 ###################################################################################
  
     
-class MLModelRunner:
+class MLModelRunner(TimeseriesModelRunner):
     """学習・予測・評価・パラメータチューニングを担うクラス
     """
 
@@ -344,30 +343,14 @@ class MLModelRunner:
                  logger,
                  memo,
                  ): 
+        super().__init__(run_name, model_cls, params, df_train, run_setting, logger, memo)
         
-        self.memo = memo
-        self.logger = logger
-        self.run_name = run_name
-        self.model_cls = model_cls
-        self.params = params
-        self.key = run_setting.get('key')
-        self.calc_shap = run_setting.get('calc_shap')
-        self.save_train_pred = run_setting.get('save_train_pred')
-        self.tune_params = run_setting.get('tune_params')
-        self.target_encoder = run_setting.get("target_encoder")
-        # カラム
-        self.target_col = run_setting.get("target_col") # str
-        self.key_cols = run_setting.get("key_cols") # list
-        # データのセット
-        self.df_train = df_train
-        self.df_test = df_test
-        self.out_dir_name = DIR_MODEL
-
-        if self.calc_shap:
-            self.shap_values = np.zeros(self.train_x.shape)
-
-        self.initial_date = "2014-09-01"
-
+        # self.calc_shap = run_setting.get('calc_shap')
+        # self.save_train_pred = run_setting.get('save_train_pred')
+        # self.tune_params = run_setting.get('tune_params')
+        # self.target_encoder = run_setting.get("target_encoder")
+        # if self.calc_shap:
+        #     self.shap_values = np.zeros(self.train_x.shape)
 
     def metric(self, va, va_pred):
         """評価指標の計算

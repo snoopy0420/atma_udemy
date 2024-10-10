@@ -54,7 +54,7 @@ class model_LSTM_mult(Model):
         self.scaler_for_inverse = None
         self.base_dir = os.path.join(DIR_MODEL, self.run_fold_name)
 
-
+    
     def create_sequences_for_forecast(self, data, key_cols, feat_cols, seq_length, n_steps, is_test=False):
         """
         予測対象の23時間分のデータが揃っている場合のみデータセットを作成
@@ -65,7 +65,7 @@ class model_LSTM_mult(Model):
         """
         list_x, list_y = [], []
         list_key = []
-        # station_idごとにデータを取得
+        # station_idごとにデータを作成
         for station_id in data['station_id'].unique():
             station_data = data[data['station_id'] == station_id]
             station_data = station_data.set_index('datetime')
@@ -73,12 +73,19 @@ class model_LSTM_mult(Model):
                 # 日付ごとにデータを取得
                 for day in station_data.index.normalize().unique():
                     day = pd.to_datetime(day)
-                    day_data = station_data.loc[:day+pd.Timedelta(hours=0)]  # 00:00までのデータ
+                    day_data = station_data.loc[:day+pd.Timedelta(hours=0)]  # dayの0時までのデータ
                     if len(day_data) >= seq_length:  # 過去データがシーケンス長よりも多い場合
-                        x = day_data[feat_cols].values[-seq_length:]  # シーケンス長分のデータを入力
+                        x = day_data.iloc[-seq_length:]  # シーケンス長分のデータを取得
+                        if x[self.target_col].isnull().sum() > 0: # ターゲットカラムに欠損値がある場合はスキップ
+                            continue
+                        x = x[feat_cols].values
+                        # 正解データ(dayの1~23時のデータ)の作成
                         next_day_data = station_data.loc[day+pd.Timedelta(hours=1): day+pd.Timedelta(hours=23)] # 予測対象の23時間分のデータ
                         if len(next_day_data) == n_steps:  # 予測対象の23時間分が揃っている場合
                             y = next_day_data['bikes_available'].values
+                            # ターゲットカラムに欠損値がある場合はスキップ
+                            if np.isnan(y).sum() > 0:
+                                continue
                             list_x.append(x)
                             list_y.append(y)
                             list_key.append(next_day_data.reset_index()[key_cols])
@@ -93,6 +100,7 @@ class model_LSTM_mult(Model):
                     list_key.append(df_)
                 
         return np.array(list_x), np.array(list_y), pd.concat(list_key, axis=0)
+    
 
     class LSTMModel(nn.Module):
         def __init__(self, input_size, hidden_size, output_size, num_layers=1):
