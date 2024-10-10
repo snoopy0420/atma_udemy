@@ -12,12 +12,14 @@ class Model(metaclass=ABCMeta):
 
     def __init__(self, 
                  run_fold_name: str, 
+                 params,
                  ) -> None:
         """コンストラクタ
         run_fold_name: runの名前とfoldの番号を組み合わせた名前
         params: ハイパーパラメータ
         """
         self.run_fold_name = run_fold_name
+        self.params = params
 
     @abstractmethod
     def train(self, 

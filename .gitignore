@@ -28,7 +28,8 @@ models/*
 notebooks/*
 !notebooks/.gitkeep
 !notebooks/EDA.ipynb
-!notebooks/baseline.ipynb
+!notebooks/baseline_LSTM.ipynb
+!notebooks/baseline_LGBM.ipynb
 !notebooks/install.ipynb
 *.gsheet
 *.bin

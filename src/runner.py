@@ -261,70 +261,6 @@ class TimeseriesModelRunner:
         self.logger.info(f'{self.run_name} - end prediction cv')
 
 
-
-
-####### model utils ##################################################################
-
-
-    def shap_feature_importance(self) -> None:
-        """計算したshap値を可視化して保存する
-        """
-        all_columns = self.train_x.columns.values.tolist() + [self.target]
-        ma_shap = pd.DataFrame(sorted(zip(abs(self.shap_values).mean(axis=0), all_columns), reverse=True),
-                        columns=['Mean Abs Shapley', 'Feature']).set_index('Feature')
-        ma_shap = ma_shap.sort_values('Mean Abs Shapley', ascending=True)
-
-        # 可視化
-        fig = plt.figure(figsize = (8,30))
-        plt.tick_params(labelsize=12) # 図のラベルのfontサイズ
-        ax = fig.add_subplot(1,1,1)
-        ax.set_title('shap value')
-        ax.barh(ma_shap.index, ma_shap['Mean Abs Shapley'] , label='Mean Abs Shapley',  align="center", alpha=0.8)
-        labels = ax.get_xticklabels()
-        plt.setp(labels, rotation=0, fontsize=10)
-        ax.legend(loc = 'upper left')
-        plt.savefig(FIGURE_DIR_NAME + self.run_name + '_shap.png', dpi=300, bbox_inches="tight")
-        plt.close()
-
-
-
-    def get_feature_name(self):
-        """ 学習に使用した特徴量を返却
-        """
-        return self.train_x.columns.values.tolist()
-
-    def get_params(self):
-        """ 学習に使用したハイパーパラメータを返却
-        """
-        return self.params
-    
-
-    def tune_param(self, tr_x, tr_y, va_x, va_y):
-        """パラメータチューニングを行う
-        """
-        # optunaによるパラメータ探索の実行
-        # パラメータ探索の範囲
-        def objective(trial):
-            params = self.params.copy()
-            params['num_leaves'] = trial.suggest_int('num_leaves', 2, 256)
-            params['max_depth'] = trial.suggest_int('max_depth', 1, 9)
-            params['learning_rate'] = trial.suggest_float('learning_rate', 1e-8, 1.0)
-            params['subsample'] = trial.suggest_float('subsample', 1e-8, 1.0)
-            params['min_data_in_leaf'] = trial.suggest_int('min_data_in_leaf', 2, 256)
-            params['reg_alpha'] = trial.suggest_float('reg_alpha', 1e-8, 1.0)
-            params['reg_lambda'] = trial.suggest_float('reg_lambda', 1e-8, 1.0)
-            model = self.model_cls(self.run_name, params)
-            model.train(tr_x, tr_y, va_x, va_y)
-            va_pred = model.predict(va_x)
-            score = self.metrics(va_y, va_pred)
-            return score
-        self.logger.info(f'{self.run_name} - start tuning')
-        study = optuna.create_study(direction='maximize')
-        study.optimize(objective, n_trials=10)
-        for key, value in study.best_params.items():
-            self.params[key] = value
-        self.logger.info(f'{self.run_name} - end tuning')
-
 ###################################################################################
  
     
@@ -344,7 +280,6 @@ class MLModelRunner(TimeseriesModelRunner):
                  memo,
                  ): 
         super().__init__(run_name, model_cls, params, df_train, run_setting, logger, memo)
-        
         # self.calc_shap = run_setting.get('calc_shap')
         # self.save_train_pred = run_setting.get('save_train_pred')
         # self.tune_params = run_setting.get('tune_params')
@@ -352,25 +287,9 @@ class MLModelRunner(TimeseriesModelRunner):
         # if self.calc_shap:
         #     self.shap_values = np.zeros(self.train_x.shape)
 
-    def metric(self, va, va_pred):
-        """評価指標の計算
-        """
-        score = mean_absolute_error(va[self.target_col], va_pred)
-        return score
-
-
-    def build_model(self, i_fold: Union[int, str]) -> Model:
-        """クロスバリデーションでのfoldを指定して、モデルの作成を行う
-        :param i_fold: foldの番号
-        :return: モデルのインスタンス
-        """
-        # run名、i_fold、モデルのクラス名からモデルを作成する
-        run_fold_name = f'{self.run_name}-fold{i_fold}'
-        model = self.model_cls(run_fold_name, self.params)
-        return model
     
     
-    def after_split_process(self, tr, va):
+    def after_split_process(self, tr, va, te):
         """データセットの分割後に行う処理
         """
         # target encoding
@@ -380,7 +299,7 @@ class MLModelRunner(TimeseriesModelRunner):
         #     tr = pd.merge(tr, tr_, on=self.key, how='left')
         #     va = pd.merge(va, va_, on=self.key, how='left')
 
-        return tr, va
+        return tr, va, te
     
 
     def craete_train_valid_dateset(self, i_fold: Union[int, str]):
@@ -400,7 +319,7 @@ class MLModelRunner(TimeseriesModelRunner):
         
 
     
-    def train_fold(self, i_fold: Union[int, str], metrics=None) -> Tuple[Model, Optional[np.array], Optional[np.array], Optional[float]]:
+    def train_fold(self, i_fold, metrics=None):
         """foldを指定して学習・評価を行う
         他のメソッドから呼び出すほか、単体でも確認やパラメータ調整に用いる
         :param i_fold: foldの番号（すべてのときには'all'とする）, metrics: 評価に用いる関数
@@ -408,7 +327,7 @@ class MLModelRunner(TimeseriesModelRunner):
         """
 
         # データセットの準備
-        tr, va, te = self.crete_train_valid_dateset(i_fold)
+        tr, _, _ = self.crete_train_valid_dateset(i_fold)
 
         # パラメータチューニングを行う
         # tr_tr_x, tr_tr_y, tr_va_x, tr_va_y = split(tr_x, tr_y, va_x, va_y)
@@ -417,12 +336,11 @@ class MLModelRunner(TimeseriesModelRunner):
         
         # 学習を行う
         model = self.build_model(i_fold)
-        model.train(tr, va)
+        model.train(tr)
 
-        # モデル、インデックス、予測値、評価を返す
         return model
 
-    def metric_fold(self, i_fold: Union[int, str], metrics=None):
+    def metric_fold(self, i_fold, metrics=None):
         """foldを指定して評価を行う"""
 
         # データセットの準備
@@ -431,92 +349,28 @@ class MLModelRunner(TimeseriesModelRunner):
         # 予測値
         model = self.build_model(i_fold)
         model.load_model()
-        va_pred = model.predict(va)
+        df_va_pred = model.predict(va)
+
+        # 正解
+        va_true = va[self.target_col].values
 
         # バリデーションデータの評価
-        score = self.metrics(va, va_pred)
+        score = self.metrics(va_true, df_va_pred[self.target_col].values)
 
-        return score
+        return score, df_va_pred
     
-    def predict_fold(self, i_fold: Union[int, str]):
+    def predict_fold(self, i_fold):
         """foldを指定して予測を行う"""
 
         # データセットの準備
-        tr, va, te = self.crete_train_valid_dateset(i_fold)
+        _, _, te = self.crete_train_valid_dateset(i_fold)
 
         # 予測値
         model = self.build_model(i_fold)
         model.load_model()
-        pred = model.predict(te)
+        df_te_pred = model.predict(te)
 
-        return pred
-
-
-    def run_train_cv(self) -> None:
-        """CVでの学習・評価を行う
-        学習・評価とともに、各foldのモデルの保存、スコアのログ出力についても行う
-        12ヶ月分の学習と評価を行う
-        12ヶ月
-        """
-        # ログ
-        self.logger.info(f'{self.run_name} - start training cv')
-
-        # fold毎の学習：train_foldをn_splits回繰り返す
-        for i_fold in pd.date_range(self.initial_date, periods=12, freq='M'):
-
-            # 学習を行う
-            self.logger.info(f'{self.run_name} fold {i_fold} - start training')
-            model = self.train_fold(i_fold)
-            self.logger.info(f'{self.run_name} fold {i_fold} - end training')
-
-            # モデルを保存する
-            model.save_model()
-
-        self.logger.info(f'{self.run_name} - end training cv')
-
-
-    def run_metric_cv(self):
-        # ログ
-        self.logger.info(f'{self.run_name} - start metric cv')
-
-        scores = [] # 各foldのscoreを保存
-
-        # fold毎の学習：train_foldをn_splits回繰り返す
-        for i_fold in pd.date_range(self.initial_date, periods=12, freq='M'):
-
-            score = self.metric_fold(i_fold)
-
-            # 結果を保持する
-            scores.append(score)
-
-        # 評価結果の保存
-        self.logger.result(f"memo: {self.memo}")
-        self.logger.result_scores(self.run_name, scores)
-        self.logger.result(f"mean: {np.mean(scores)}, std: {np.std(scores)}")
-
-        self.logger.info(f'{self.run_name} - end metric cv')
-
-
-    def run_predict_cv(self) -> None:
-        """CVで学習した各foldのモデルの平均により、テストデータの予測を行う
-        あらかじめrun_train_cvを実行しておく必要がある
-        """
-        self.logger.info(f'{self.run_name} - start prediction cv')
-        preds = []
-
-        for i_fold in pd.date_range(self.initial_date, periods=12, freq='M'):
-            self.logger.info(f'{self.run_name} - start prediction fold:{i_fold}')
-            pred = self.predict_fold(i_fold)
-            preds.append(pred)
-            self.logger.info(f'{self.run_name} - end prediction fold:{i_fold}')
-        df_preds = pd.concat(preds, axis=0)
-        
-        # 予測結果の保存
-        path_output = os.path.join(self.out_dir_name, f'{self.run_name}-pred.pkl')
-        Util.dump_df_pickle(df_preds, path_output)
-        self.logger.info(f'output predict : {path_output}')
-
-        self.logger.info(f'{self.run_name} - end prediction cv')
+        return df_te_pred
 
 
     def plot_feature_importance_cv(self) -> None:
