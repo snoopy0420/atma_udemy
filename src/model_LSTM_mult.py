@@ -35,8 +35,7 @@ class model_LSTM_mult(Model):
         run_fold_name: runの名前とfoldの番号を組み合わせた名前
         params: ハイパーパラメータ
         """
-        super().__init__(run_fold_name, params)
-        self.logger = logger
+        super().__init__(run_fold_name, params, logger)
         # カラム
         self.key_cols = params.get("key_cols") # list
         self.target_col = params.get("target_col") # str

@@ -13,6 +13,7 @@ class Model(metaclass=ABCMeta):
     def __init__(self, 
                  run_fold_name: str, 
                  params,
+                 logger,
                  ) -> None:
         """コンストラクタ
         run_fold_name: runの名前とfoldの番号を組み合わせた名前
@@ -20,6 +21,7 @@ class Model(metaclass=ABCMeta):
         """
         self.run_fold_name = run_fold_name
         self.params = params
+        self.logger = logger
 
     @abstractmethod
     def train(self, 

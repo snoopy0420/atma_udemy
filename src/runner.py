@@ -72,7 +72,7 @@ class TimeseriesModelRunner:
         # run名、i_fold、モデルのクラス名からモデルを作成する
         i_fold_str = i_fold.strftime('%Y-%m-%d')
         run_fold_name = f'{self.run_name}_fold-{i_fold_str}'
-        model = self.model_cls(run_fold_name, self.params, self.logger)
+        model = self.model_cls(run_fold_name, self.params.copy(), self.logger)
         return model
     
     
@@ -274,13 +274,13 @@ class MLModelRunner(TimeseriesModelRunner):
                  run_name: str, # runの名前
                  model_cls: Callable[[str, dict], Model], #モデルのクラス
                  params: dict, # ハイパーパラメータ
-                 df_train: pd.DataFrame, # 学習データ
-                 df_test: pd.DataFrame, # テストデータ
+                 df_main: pd.DataFrame, # 学習データ
                  run_setting: dict,
+                 cv_setting: dict,
                  logger,
                  memo,
                  ): 
-        super().__init__(run_name, model_cls, params, df_train, run_setting, logger, memo)
+        super().__init__(run_name, model_cls, params, df_main, run_setting, cv_setting, logger, memo)
         # self.calc_shap = run_setting.get('calc_shap')
         # self.save_train_pred = run_setting.get('save_train_pred')
         # self.tune_params = run_setting.get('tune_params')
@@ -303,24 +303,25 @@ class MLModelRunner(TimeseriesModelRunner):
         return tr, va, te
     
 
-    def craete_train_valid_dateset(self, i_fold: Union[int, str]):
+    def create_train_valid_dateset(self, i_fold: Union[int, str]):
         """foldを指定して訓練・検証データを準備する
         """
         # データセットの準備
         # ex) i_fold: 2014-09
         # 0時のデータについて1期先のpredictの値を代入する
-        data = self.df_train.copy()
+        data = self.df_main.copy()
         for station_id in data["station_id"].unique():
             df_station = data[data["station_id"] == station_id].copy()
             df_station["predict_term1"] = df_station["predict"].shift(-1)
-            df_station.loc[df_station["datetime"].dt.hour == 0, "predict"] = df_station["predict_term1"]
+            df_station["predict"] = df_station.apply(lambda x: x["predict_term1"] if x["datetime"].hour == 0 else x["predict"], axis=1)    
+            df_station.drop(columns=["predict_term1"], inplace=True)
             data[data["station_id"] == station_id] = df_station
         # 学習データ・バリデーションデータ、テストデータに分割
         tr = data[data['datetime'] < i_fold]
-        te = data[data['datetime'] == i_fold]       
-        va = te[te["predict"]==2]
-        te = te[te["predict"]==1]
-
+        tr_va_te = self.df_main[self.df_main['datetime'] < i_fold+pd.DateOffset(months=1)]
+        va_te = tr_va_te[tr_va_te['datetime'] >= i_fold]       
+        va = va_te[va_te["predict"]==2]
+        te = va_te[va_te["predict"]==1]
         # データセットの分割後に行う処理
         tr, va, te = self.after_split_process(tr, va, te)
 
@@ -336,7 +337,7 @@ class MLModelRunner(TimeseriesModelRunner):
         """
 
         # データセットの準備
-        tr, _, _ = self.crete_train_valid_dateset(i_fold)
+        tr, _, _ = self.create_train_valid_dateset(i_fold)
 
         # パラメータチューニングを行う
         # tr_tr_x, tr_tr_y, tr_va_x, tr_va_y = split(tr_x, tr_y, va_x, va_y)
@@ -353,7 +354,7 @@ class MLModelRunner(TimeseriesModelRunner):
         """foldを指定して評価を行う"""
 
         # データセットの準備
-        _, va, _  = self.crete_train_valid_dateset(i_fold)
+        _, va, _  = self.create_train_valid_dateset(i_fold)
 
         # 予測値
         model = self.build_model(i_fold)
@@ -373,7 +374,7 @@ class MLModelRunner(TimeseriesModelRunner):
         """foldを指定して予測を行う"""
 
         # データセットの準備
-        _, _, te = self.crete_train_valid_dateset(i_fold)
+        _, _, te = self.create_train_valid_dateset(i_fold)
 
         # 予測値
         model = self.build_model(i_fold)

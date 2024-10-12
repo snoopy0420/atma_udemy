@@ -25,8 +25,8 @@ from src.util import Util, Metric
 
 class model_LGBM_multimodel(Model):
 
-    def __init__(self, run_fold_name: str, params) -> None:
-        super().__init__(run_fold_name, params)
+    def __init__(self, run_fold_name: str, params, logger) -> None:
+        super().__init__(run_fold_name, params, logger)
         # カラム
         self.key_cols = self.params.pop("key_cols") # list
         self.target_col = self.params.pop("target_col") # str
@@ -36,9 +36,24 @@ class model_LGBM_multimodel(Model):
         self.feat_cols = None
         self.base_dir = os.path.join(DIR_MODEL, self.run_fold_name)
         self.term_max = 23 # 予測対象の時間範囲
+        os.makedirs(self.base_dir, exist_ok=True)
 
     def create_dataset(self, data, term, feat_cols, is_test=False):
-        """データセットの作成"""
+        """データセットの作成
+        termを指定してterm期先のterget_colから正解データを作成
+        train,validにデータセットを分割
+
+        Args:
+            data(pd.DataFrame): 学習データ[key_cols, target_col, predict, 特徴量]
+            term(int): 予測期間
+            feat_cols(list): 特徴量
+            is_test(bool): テストデータの場合
+        Returns:
+            tr_x: 学習データの特徴量
+            tr_y: 学習データの目的変数
+            va_x: バリデーションデータの特徴量
+            va_y: バリデーションデータの目的変数
+        """
         tr_x, tr_y, va_x, va_y = [], [], [], []
         max_date = data['datetime'].max()
         va_start_date = max_date.replace(day=1, hour=0)
@@ -52,11 +67,11 @@ class model_LGBM_multimodel(Model):
             va_ = va[va["station_id"]==station_id]
             # 正解データの作成
             target_col_term = f"{self.target_col}_term{term}"
-            tr_.sort_values("datetime", inplace=True) 
-            va_.sort_values("datetime", inplace=True)
+            tr_ = tr_.sort_values("datetime")
+            va_ = va_.sort_values("datetime")
             tr_[target_col_term] = tr_[self.target_col].shift(-term)
             va_[target_col_term] = va_[self.target_col].shift(-term)
-            # va期間のうちpredict==2のデータを検証データに使う
+            # vaのうち正解データのpredict==2となるデータを検証データに使う
             predict_col_term = f"predict_term{term}"
             va_[predict_col_term] = va_["predict"].shift(-term)
             va_ = va_[va_[predict_col_term]==2]
@@ -77,15 +92,21 @@ class model_LGBM_multimodel(Model):
         return tr_x, tr_y, va_x, va_y
     
     def train(self, data):
-        """モデルの学習"""
+        """モデルの学習
+        Args:
+            data(pd.DataFrame): 学習データ[key_cols, target_col, predict, 特徴量]
+        """
         # 特徴量
-        feat_cols = [col for col in data.columns if col not in self.key_cols + self.remove_cols]
+        self.feat_cols = [col for col in data.columns if col not in self.key_cols + self.remove_cols]
 
         # 1~23期モデルを学習
+        evals_results = []
         for term in range(1, self.term_max+1):
 
+            print(f"term : {term}")
+
             # データセットの作成
-            tr_x, tr_y, va_x, va_y = self.create_dataset(data, term, feat_cols)
+            tr_x, tr_y, va_x, va_y = self.create_dataset(data, term, self.feat_cols)
             dtrain = lgb.Dataset(tr_x, tr_y)
             dvalid = lgb.Dataset(va_x, va_y)
 
@@ -96,6 +117,7 @@ class model_LGBM_multimodel(Model):
             verbose = params.pop('verbose')
             period = params.pop('period')
 
+            print(f"tain model")
             # 学習
             evals_result = {}
             model = lgb.train(
@@ -107,37 +129,60 @@ class model_LGBM_multimodel(Model):
                 callbacks=[lgb.early_stopping(stopping_rounds=early_stopping_rounds, verbose=verbose),
                            lgb.log_evaluation(period=period),
                            lgb.record_evaluation(evals_result)],
-                feval=self.custum_eval, # カスタム評価関数
+                # feval=self.custum_eval, # カスタム評価関数
                 # fobj=ModelLGB.custum_loss, # カスタム目的関数
             )
 
             self.models.append(model)
+            evals_results.append(evals_result)
 
-            # 学習曲線を保存
-            self.plot_learning_curve(evals_result)
+        # 学習曲線を保存
+        self.plot_learning_curve(evals_results)
 
-    def predict_term(self, te_x, term):
-        """予測"""
-        
+
+    def predict_term(self, te, term):
+        """予測
+        """
         model = self.models[term - 1]
 
-        return self.models[term - 1].predict(te_x)
-
-
-    def plot_learning_curve(self, evals_result, term):
-        """学習曲線を保存"""
-        import matplotlib.pyplot as plt
-        plt.figure()
-        plt.plot(evals_result['train']['l2'], label='train')
-        plt.plot(evals_result['eval']['l2'], label='eval')
-        plt.title(f'Term {term} Learning Curve')
-        plt.xlabel('Iterations')
-        plt.ylabel('L2 Loss')
-        plt.legend()
-        plt.savefig(os.path.join(self.base_dir, f'learning_curve_term_{term}.png'))
-        plt.close()
-
+        return self.models[term - 1].predict(te)
     
+    def predict(self, te):
+        """予測
+        Args:
+            te: 予測対象の00:00のデータ [key_cols, target_col, 特徴量]
+        Returns:
+            df_te_pred: 予測対象の1~23期の予測結果 [key_cols, target_col]
+        """
+        # 予測対象の1~23期の予測結果を格納するdf
+        df_te_pred = te[self.key_cols].copy()
+        # 特徴量
+        feat_cols = [col for col in te.columns if col not in self.key_cols + self.remove_cols]
+        # 1~23期の予測
+        for term in range(1, self.term_max+1):
+            print(f"term : {term}")
+            te_x = te[te["datetime"].dt.hour==0][feat_cols]
+            te_pred = self.predict_term(te_x, term)
+            df_te_pred[f"{self.target_col}_term{term}"] = te_pred
+        return df_te_pred
+    
+    def plot_learning_curve(self, evals_results):
+        """23期分の学習曲線を保存
+        """
+        # 23期分の学習曲線をaxを分けて描画し保存する
+        fig, ax = plt.subplots(4, 6, figsize=(24, 16))
+        plt.tick_params(labelsize=12) # 図のラベルのfontサイズ
+        plt.tight_layout()
+        for term in range(1, self.term_max+1):
+            ax_ = ax[(term-1)//6][(term-1)%6]
+            ax_.plot(evals_results[term-1]['train']['l1'], label='train')
+            ax_.plot(evals_results[term-1]['eval']['l1'], label='eval')
+            ax_.set_title(f'Term {term} Learning Curve')
+            ax_.set_xlabel('Iterations')
+            ax_.set_ylabel('L1 Loss')
+            ax_.legend()
+        save_path = os.path.join(self.base_dir, 'learning_curve.png')
+        plt.savefig(save_path)
 
 
     def predict(self, te_x):
@@ -146,19 +191,24 @@ class model_LGBM_multimodel(Model):
         return self.model.predict(te_x, num_iteration=self.model.best_iteration)
 
 
-    def save_model(self):
-        """モデルを保存
+    def save_model(self) -> None:
         """
-        model_path = os.path.join(DIR_MODEL, self.run_fold_name, f'{self.run_fold_name}.model')
-        os.makedirs(os.path.dirname(model_path), exist_ok=True)
-        Util.dump(self.model, model_path)
-
-
-    def load_model(self):
-        """モデルの読み込み
+        モデルを保存する
         """
-        model_path = os.path.join(DIR_MODEL, self.run_fold_name, f'{self.run_fold_name}.model')
-        self.model = Util.load(model_path)
+        os.makedirs(self.base_dir, exist_ok=True)
+        path_model = os.path.join(self.base_dir, 'models.pkl')
+        path_feat_cols = os.path.join(self.base_dir, 'feat_cols.pkl')
+        Util.dump(self.models, path_model)
+        Util.dump(self.feat_cols, path_feat_cols)
+
+    def load_model(self) -> None:
+        """
+        モデルを読み込む
+        """
+        path_model = os.path.join(self.base_dir, 'models.pkl')
+        path_feat_cols = os.path.join(self.base_dir, 'feat_cols.pkl')
+        self.models = Util.load(path_model)
+        self.feat_cols = Util.load(path_feat_cols)
 
 
     @staticmethod
@@ -171,26 +221,6 @@ class model_LGBM_multimodel(Model):
 
         return "AUC", eval_result, True
     
-
-    def plot_learning_curve(self, evals_result):
-        """学習過程の可視化
-        """
-        fig, ax = plt.subplots(figsize=(12,8))
-        plt.tick_params(labelsize=12) # 図のラベルのfontサイズ
-        plt.tight_layout()
-        plt.title('Learning curve')
-
-        ax.plot(evals_result['train']["AUC"][10:], label="train")
-        ax.plot(evals_result['eval']["AUC"][10:], label="valid")
-        ax.set_xlabel('epoch')
-        ax.set_ylabel("AUC")
-        ax.legend()
-        ax.grid(True)
-
-        save_path = os.path.join(DIR_FIGURE, f'{self.run_fold_name}_lcurve.png')
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
-        plt.close()
-
     def get_feature_importance(self):
         """特徴量の重要度を取得
         """
