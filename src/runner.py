@@ -137,6 +137,7 @@ class TimeseriesModelRunner:
         # 検証データの予測
         list_va_true = []
         list_va_pred = []
+        # 日付毎に予測
         for va_date in list_va_date:
             va_datetime = pd.to_datetime(va_date)
             va = tr_va_te[tr_va_te["datetime"]<=va_datetime.replace(hour=0)]
@@ -306,9 +307,17 @@ class MLModelRunner(TimeseriesModelRunner):
         """foldを指定して訓練・検証データを準備する
         """
         # データセットの準備
+        # ex) i_fold: 2014-09
+        # 0時のデータについて1期先のpredictの値を代入する
+        data = self.df_train.copy()
+        for station_id in data["station_id"].unique():
+            df_station = data[data["station_id"] == station_id].copy()
+            df_station["predict_term1"] = df_station["predict"].shift(-1)
+            df_station.loc[df_station["datetime"].dt.hour == 0, "predict"] = df_station["predict_term1"]
+            data[data["station_id"] == station_id] = df_station
         # 学習データ・バリデーションデータ、テストデータに分割
-        tr = self.df_train[self.df_train['datetime'] < i_fold]
-        te = self.df_train[self.df_train['datetime'] == i_fold]
+        tr = data[data['datetime'] < i_fold]
+        te = data[data['datetime'] == i_fold]       
         va = te[te["predict"]==2]
         te = te[te["predict"]==1]
 
@@ -349,13 +358,14 @@ class MLModelRunner(TimeseriesModelRunner):
         # 予測値
         model = self.build_model(i_fold)
         model.load_model()
-        df_va_pred = model.predict(va)
+        va_for_pred = va[va["datetime"].dt.hour==0] 
+        df_va_pred = model.predict(va_for_pred)
 
         # 正解
-        va_true = va[self.target_col].values
+        df_va_true = va[va["datetime"].dt.hour!=0]  
 
         # バリデーションデータの評価
-        score = self.metrics(va_true, df_va_pred[self.target_col].values)
+        score = self.metrics(df_va_true[self.target_col].values, df_va_pred[self.target_col].values)
 
         return score, df_va_pred
     
@@ -368,7 +378,8 @@ class MLModelRunner(TimeseriesModelRunner):
         # 予測値
         model = self.build_model(i_fold)
         model.load_model()
-        df_te_pred = model.predict(te)
+        te_for_pred = te[te["datetime"].dt.hour==0] 
+        df_te_pred = model.predict(te_for_pred)
 
         return df_te_pred
 
