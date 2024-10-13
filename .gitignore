@@ -25,12 +25,12 @@ logs/*
 !logs/.gitkeep
 models/*
 !models/.gitkeep
-notebooks/*
-!notebooks/.gitkeep
-!notebooks/EDA.ipynb
-!notebooks/baseline_LSTM.ipynb
-!notebooks/baseline_LGBM.ipynb
-!notebooks/install.ipynb
+notebooks/bk/*
+# !notebooks/.gitkeep
+# !notebooks/EDA.ipynb
+# !notebooks/baseline_LSTM.ipynb
+# !notebooks/baseline_LGBM.ipynb
+# !notebooks/install.ipynb
 *.gsheet
 *.bin
 *.pt

@@ -4,9 +4,9 @@ import yaml
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import shap
 import lightgbm as lgb
-from sklearn.metrics import roc_auc_score
+import gc
+
 
 # 定数の読み込み
 CONFIG_FILE = '../configs/config.yaml'
@@ -57,36 +57,49 @@ class model_LGBM_multimodel(Model):
         """
         tr_x, tr_y, va_x, va_y = [], [], [], []
         va_start_date = data['datetime'].max().replace(day=1, hour=0)
+        
         # 訓練データと検証データに分割
-        tr = data[data["datetime"]<va_start_date].copy()
-        va = data[data["datetime"]>=va_start_date].copy()
+        tr = data[data["datetime"] < va_start_date]
+        va = data[data["datetime"] >= va_start_date]
+        
         # vaの2014-09-01以前のデータをpredict=2にする
-        va.loc[va["datetime"]<"2014-09-01", "predict"] = 2
-        for station_id in tr["station_id"].unique():
-            tr_ = tr[tr["station_id"]==station_id].copy()
-            va_ = va[va["station_id"]==station_id].copy()
+        va.loc[va["datetime"] < "2014-09-01", "predict"] = 2
+        
+        for station_id in tr["station_id"].unique():            
+            tr_ = tr[tr["station_id"] == station_id]
+            va_ = va[va["station_id"] == station_id]
+            
             # 正解データの作成
             target_col_term = f"{self.target_col}_term{term}"
             tr_ = tr_.sort_values("datetime")
             va_ = va_.sort_values("datetime")
+            
             tr_[target_col_term] = tr_[self.target_col].shift(-term)
             va_[target_col_term] = va_[self.target_col].shift(-term)
+            
             # vaのうち正解データのpredict==2となるデータを検証データに使う
             predict_col_term = f"predict_term{term}"
             va_[predict_col_term] = va_["predict"].shift(-term)
-            va_ = va_[va_[predict_col_term]==2]
+            va_ = va_[va_[predict_col_term] == 2]
             va_ = va_.drop(columns=[predict_col_term])
+            
             # 00:00のデータを抽出
-            tr_ = tr_[tr_["datetime"].dt.hour==0]
-            va_ = va_[va_["datetime"].dt.hour==0]
+            tr_ = tr_[tr_["datetime"].dt.hour == 0]
+            va_ = va_[va_["datetime"].dt.hour == 0]
+            
             # 正解データが欠損している行を削除
             tr_ = tr_.dropna(subset=[target_col_term])
             va_ = va_.dropna(subset=[target_col_term])
+            
             # x,yに分割
             tr_x.append(tr_[feat_cols])
             tr_y.append(tr_[[target_col_term]])
             va_x.append(va_[feat_cols])
             va_y.append(va_[[target_col_term]])
+            
+            # メモリ解放
+            del tr_, va_
+            gc.collect()
         tr_x, tr_y, va_x, va_y = pd.concat(tr_x, axis=0), pd.concat(tr_y, axis=0), pd.concat(va_x, axis=0), pd.concat(va_y, axis=0)
 
         return tr_x, tr_y, va_x, va_y
@@ -97,12 +110,11 @@ class model_LGBM_multimodel(Model):
             data(pd.DataFrame): 学習データ[key_cols, target_col, predict, 特徴量]
         """
         # 特徴量
-        self.feat_cols = [col for col in data.columns if col not in self.key_cols + self.remove_cols]
+        self.feat_cols = [col for col in data.columns if col not in self.key_cols+[self.target_col]+self.remove_cols]
 
         # 1~23期モデルを学習
         evals_results = []
         for term in range(1, self.term_max+1):
-
             # データセットの作成
             tr_x, tr_y, va_x, va_y = self.create_dataset(data, term, self.feat_cols)
             dtrain = lgb.Dataset(tr_x, tr_y)
