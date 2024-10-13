@@ -22,6 +22,7 @@ sys.path.append(DIR_HOME)
 from src.model import Model
 from src.util import Util, Metric
 
+import gc
 
 class model_LGBM_multimodel(Model):
 
@@ -55,16 +56,15 @@ class model_LGBM_multimodel(Model):
             va_y: バリデーションデータの目的変数
         """
         tr_x, tr_y, va_x, va_y = [], [], [], []
-        max_date = data['datetime'].max()
-        va_start_date = max_date.replace(day=1, hour=0)
+        va_start_date = data['datetime'].max().replace(day=1, hour=0)
         # 訓練データと検証データに分割
-        tr = data[data["datetime"]<va_start_date]
-        va = data[data["datetime"]>=va_start_date]
+        tr = data[data["datetime"]<va_start_date].copy()
+        va = data[data["datetime"]>=va_start_date].copy()
         # vaの2014-09-01以前のデータをpredict=2にする
         va.loc[va["datetime"]<"2014-09-01", "predict"] = 2
         for station_id in tr["station_id"].unique():
-            tr_ = tr[tr["station_id"]==station_id]
-            va_ = va[va["station_id"]==station_id]
+            tr_ = tr[tr["station_id"]==station_id].copy()
+            va_ = va[va["station_id"]==station_id].copy()
             # 正解データの作成
             target_col_term = f"{self.target_col}_term{term}"
             tr_ = tr_.sort_values("datetime")
@@ -75,7 +75,7 @@ class model_LGBM_multimodel(Model):
             predict_col_term = f"predict_term{term}"
             va_[predict_col_term] = va_["predict"].shift(-term)
             va_ = va_[va_[predict_col_term]==2]
-            va_.drop(columns=[predict_col_term], inplace=True)
+            va_ = va_.drop(columns=[predict_col_term])
             # 00:00のデータを抽出
             tr_ = tr_[tr_["datetime"].dt.hour==0]
             va_ = va_[va_["datetime"].dt.hour==0]
@@ -84,9 +84,9 @@ class model_LGBM_multimodel(Model):
             va_ = va_.dropna(subset=[target_col_term])
             # x,yに分割
             tr_x.append(tr_[feat_cols])
-            tr_y.append(tr_[target_col_term])
+            tr_y.append(tr_[[target_col_term]])
             va_x.append(va_[feat_cols])
-            va_y.append(va_[target_col_term])
+            va_y.append(va_[[target_col_term]])
         tr_x, tr_y, va_x, va_y = pd.concat(tr_x, axis=0), pd.concat(tr_y, axis=0), pd.concat(va_x, axis=0), pd.concat(va_y, axis=0)
 
         return tr_x, tr_y, va_x, va_y
@@ -103,8 +103,6 @@ class model_LGBM_multimodel(Model):
         evals_results = []
         for term in range(1, self.term_max+1):
 
-            print(f"term : {term}")
-
             # データセットの作成
             tr_x, tr_y, va_x, va_y = self.create_dataset(data, term, self.feat_cols)
             dtrain = lgb.Dataset(tr_x, tr_y)
@@ -117,13 +115,12 @@ class model_LGBM_multimodel(Model):
             verbose = params.pop('verbose')
             period = params.pop('period')
 
-            print(f"tain model")
             # 学習
             evals_result = {}
             model = lgb.train(
                 params,
                 dtrain,
-                num_boost_round=num_round,
+                num_round,
                 valid_sets=(dtrain, dvalid),
                 valid_names=("train", "eval"),
                 callbacks=[lgb.early_stopping(stopping_rounds=early_stopping_rounds, verbose=verbose),
@@ -227,14 +224,6 @@ class model_LGBM_multimodel(Model):
         return self.model.feature_importance(importance_type='gain')
 
 ############################################################################
-
-
-    def predict_and_shap(self, te_x, shap_sampling):
-        """予測（shapを計算するver うまくいかない）
-        """
-        fold_importance = shap.TreeExplainer(self.model).shap_values(te_x[:shap_sampling])
-        valid_prediticion = self.model.predict(te_x, num_iteration=self.model.best_iteration)
-        return valid_prediticion, fold_importance
     
     @staticmethod
     def custum_loss(preds: np.ndarray, dtrain: lgb.Dataset):
