@@ -138,11 +138,13 @@ class model_LGBM_multimodel(Model):
 
 
     def predict_term(self, te, term):
-        """予測
+        """term先の予測
         """
-        model = self.models[term - 1]
+        model = self.models[term-1]
+        te_x = te[self.feat_cols]
+        pred = model.predict(te_x, num_iteration=model.best_iteration)
 
-        return self.models[term - 1].predict(te)
+        return pred
     
     def predict(self, te):
         """予測
@@ -151,41 +153,18 @@ class model_LGBM_multimodel(Model):
         Returns:
             df_te_pred: 予測対象の1~23期の予測結果 [key_cols, target_col]
         """
-        # 予測対象の1~23期の予測結果を格納するdf
-        df_te_pred = te[self.key_cols].copy()
-        # 特徴量
-        feat_cols = [col for col in te.columns if col not in self.key_cols + self.remove_cols]
-        # 1~23期の予測
-        for term in range(1, self.term_max+1):
-            print(f"term : {term}")
-            te_x = te[te["datetime"].dt.hour==0][feat_cols]
-            te_pred = self.predict_term(te_x, term)
-            df_te_pred[f"{self.target_col}_term{term}"] = te_pred
-        return df_te_pred
-    
-    def plot_learning_curve(self, evals_results):
-        """23期分の学習曲線を保存
-        """
-        # 23期分の学習曲線をaxを分けて描画し保存する
-        fig, ax = plt.subplots(4, 6, figsize=(24, 16))
-        plt.tick_params(labelsize=12) # 図のラベルのfontサイズ
-        plt.tight_layout()
-        for term in range(1, self.term_max+1):
-            ax_ = ax[(term-1)//6][(term-1)%6]
-            ax_.plot(evals_results[term-1]['train']['l1'], label='train')
-            ax_.plot(evals_results[term-1]['eval']['l1'], label='eval')
-            ax_.set_title(f'Term {term} Learning Curve')
-            ax_.set_xlabel('Iterations')
-            ax_.set_ylabel('L1 Loss')
-            ax_.legend()
-        save_path = os.path.join(self.base_dir, 'learning_curve.png')
-        plt.savefig(save_path)
-
-
-    def predict(self, te_x):
-        """予測（shapを計算しないver）
-        """
-        return self.model.predict(te_x, num_iteration=self.model.best_iteration)
+        # staion_id単位に1~23期の予測
+        list_df_pred = []
+        for station_id in te["station_id"].unique():
+            te_ = te[te["station_id"]==station_id].copy()
+            for term in range(1, self.term_max+1):
+                pred = self.predict_term(te_, term)
+                df_pred = te_[self.key_cols].copy()
+                df_pred["datetime"] = df_pred["datetime"] + pd.Timedelta(hours=term)
+                df_pred[self.target_col] = pred
+                list_df_pred.append(df_pred)
+        df_te_pred = pd.concat(list_df_pred, axis=0)
+        return df_te_pred.sort_values(self.key_cols)
 
 
     def save_model(self) -> None:
@@ -208,36 +187,36 @@ class model_LGBM_multimodel(Model):
         self.feat_cols = Util.load(path_feat_cols)
 
 
-    @staticmethod
-    def custum_eval(preds: np.ndarray, dtrain: lgb.Dataset):
-        """カスタム評価関数（mape)
+    def plot_learning_curve(self, evals_results):
+        """23期分の学習曲線を保存
         """
-        labels = dtrain.get_label()
+        # 23期分の学習曲線をaxを分けて描画し保存する
+        fig, ax = plt.subplots(4, 6, figsize=(24, 16))
+        for term in range(1, self.term_max+1):
+            ax_ = ax[(term-1)//6][(term-1)%6]
+            ax_.plot(evals_results[term-1]['train']['l1'], label='train')
+            ax_.plot(evals_results[term-1]['eval']['l1'], label='eval')
+            ax_.set_title(f'Term {term} Learning Curve')
+            ax_.set_xlabel('Iterations')
+            ax_.set_ylabel('L1 Loss')
+            ax_.legend()
+        save_path = os.path.join(self.base_dir, 'learning_curve.png')
+        plt.tick_params(labelsize=12) # 図のラベルのfontサイズ
+        plt.tight_layout()
+        plt.savefig(save_path)
+        plt.close()
 
-        eval_result = roc_auc_score(labels, preds)
-
-        return "AUC", eval_result, True
     
     def get_feature_importance(self):
-        """特徴量の重要度を取得
+        """termごとの特徴量の重要度を取得
+        return:
+            df_importance: termごとの特徴量の重要度 [feature, importance]
         """
-        return self.model.feature_importance(importance_type='gain')
-
-############################################################################
-    
-    @staticmethod
-    def custum_loss(preds: np.ndarray, dtrain: lgb.Dataset):
-        """カスタム目的関数（fair loss)
-        """
-        # 残差を取得
-        x = preds - dtrain.get_label()
-        # Fair関数のパラメータ
-        c = 1.0
-        # 勾配の式の分母
-        den = abs(x) + c
-        # 勾配
-        grad = c * x / den
-        # 二階微分値
-        hess = c * c / den ** 2
-
-        return grad, hess
+        list_df_importance = []
+        for term in range(1, self.term_max+1):
+            model = self.models[term-1]
+            df_importance = pd.DataFrame()
+            df_importance["feature"] = model.feature_name()
+            df_importance["importance"] = model.feature_importance(importance_type='gain')
+            list_df_importance.append(df_importance)
+        return list_df_importance

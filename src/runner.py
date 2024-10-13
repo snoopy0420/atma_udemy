@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from typing import Callable, List, Tuple, Union, Optional
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from tqdm import tqdm
+from datetime import datetime
 
 
 CONFIG_FILE = '../configs/config.yaml'
@@ -20,6 +21,7 @@ DIR_MODEL = yml['SETTING']['DIR_MODEL']
 DIR_FIGURE = yml['SETTING']['DIR_FIGURE']
 TARGET_COL = yml['SETTING']['TARGET_COL']
 REMOVED_COL = yml['SETTING']['REMOVE_COLS']
+DIR_INTERIM = yml['SETTING']['DIR_INTERIM']
 
 sys.path.append(DIR_HOME)
 from src.model import Model
@@ -104,7 +106,6 @@ class TimeseriesModelRunner:
 
         return tr, tr_va_te, list_va_date, list_te_date
 
-
     
     def train_fold(self, i_fold, metrics=None) -> Tuple[Model, Optional[np.array], Optional[np.array], Optional[float]]:
         """foldを指定して学習・評価を行う
@@ -122,7 +123,7 @@ class TimeseriesModelRunner:
 
         return model
 
-    def metric_fold(self, i_fold, metrics=None):
+    def metric_fold(self, i_fold):
         """
         foldを指定して評価を行う
         """
@@ -150,6 +151,14 @@ class TimeseriesModelRunner:
         df_va_true = pd.concat(list_va_true, axis=0).sort_values(self.key_cols)
         df_va_pred = pd.concat(list_va_pred, axis=0).sort_values(self.key_cols)
 
+        # 欠損値補完前の目的変数がNaNの行を削除
+        status_data = pd.read_pickle(os.path.join(DIR_INTERIM, "status_data.pkl"))[self.key_cols + [self.target_col]]
+        status_data = status_data.rename(columns={self.target_col: "target"})
+        df_va_true = pd.merge(df_va_true, status_data, on=self.key_cols, how="inner")
+        df_va_pred = pd.merge(df_va_pred, status_data, on=self.key_cols, how="inner")
+        df_va_true = df_va_true.dropna(subset=["target"])
+        df_va_pred = df_va_pred.dropna(subset=["target"])
+        
         # バリデーションデータの評価
         va_score = self.metric(df_va_true[self.target_col].values, df_va_pred[self.target_col].values)
 
@@ -302,9 +311,12 @@ class MLModelRunner(TimeseriesModelRunner):
 
         return tr, va, te
     
-
     def create_train_valid_dateset(self, i_fold: Union[int, str]):
         """foldを指定して訓練・検証データを準備する
+        return:
+            tr: i_fold以前のデータ
+            va: i_fild~i_fold+1期の検証対象日の0時~23時のデータ
+            te: i_fild~i_fold+1期のテスト対象日の0時~23時のデータ
         """
         # データセットの準備
         # ex) i_fold: 2014-09
@@ -318,7 +330,7 @@ class MLModelRunner(TimeseriesModelRunner):
             data[data["station_id"] == station_id] = df_station
         # 学習データ・バリデーションデータ、テストデータに分割
         tr = data[data['datetime'] < i_fold]
-        tr_va_te = self.df_main[self.df_main['datetime'] < i_fold+pd.DateOffset(months=1)]
+        tr_va_te = data[data['datetime'] < i_fold+pd.DateOffset(months=1)]
         va_te = tr_va_te[tr_va_te['datetime'] >= i_fold]       
         va = va_te[va_te["predict"]==2]
         te = va_te[va_te["predict"]==1]
@@ -328,7 +340,6 @@ class MLModelRunner(TimeseriesModelRunner):
         return tr, va, te
         
 
-    
     def train_fold(self, i_fold, metrics=None):
         """foldを指定して学習・評価を行う
         他のメソッドから呼び出すほか、単体でも確認やパラメータ調整に用いる
@@ -350,23 +361,34 @@ class MLModelRunner(TimeseriesModelRunner):
 
         return model
 
-    def metric_fold(self, i_fold, metrics=None):
+    def metric_fold(self, i_fold):
         """foldを指定して評価を行う"""
 
         # データセットの準備
         _, va, _  = self.create_train_valid_dateset(i_fold)
 
         # 予測値
+        va_0 = va[va["datetime"].dt.hour==0]
         model = self.build_model(i_fold)
         model.load_model()
-        va_for_pred = va[va["datetime"].dt.hour==0] 
-        df_va_pred = model.predict(va_for_pred)
+        df_va_pred = model.predict(va_0)
 
-        # 正解
-        df_va_true = va[va["datetime"].dt.hour!=0]  
+        # 正解データの作成
+        df_va_true = va[va["datetime"].dt.hour!=0][self.key_cols + [self.target_col]]
 
         # バリデーションデータの評価
-        score = self.metrics(df_va_true[self.target_col].values, df_va_pred[self.target_col].values)
+        df_va_pred = df_va_pred.sort_values(self.key_cols)
+        df_va_true = df_va_true.sort_values(self.key_cols)
+
+        # 欠損値補完前の目的変数がNaNの行を削除
+        status_data = pd.read_pickle(os.path.join(DIR_INTERIM, "status_data.pkl"))[self.key_cols + [self.target_col]]
+        status_data = status_data.rename(columns={self.target_col: "target"})
+        df_va_true = pd.merge(df_va_true, status_data, on=self.key_cols, how="inner")
+        df_va_pred = pd.merge(df_va_pred, status_data, on=self.key_cols, how="inner")
+        df_va_true = df_va_true.dropna(subset=["target"])
+        df_va_pred = df_va_pred.dropna(subset=["target"])
+
+        score = self.metric(df_va_true[self.target_col].values, df_va_pred[self.target_col].values)
 
         return score, df_va_pred
     
@@ -377,45 +399,37 @@ class MLModelRunner(TimeseriesModelRunner):
         _, _, te = self.create_train_valid_dateset(i_fold)
 
         # 予測値
+        te_x = te[te["datetime"].dt.hour==0]
         model = self.build_model(i_fold)
         model.load_model()
-        te_for_pred = te[te["datetime"].dt.hour==0] 
-        df_te_pred = model.predict(te_for_pred)
+        df_te_pred = model.predict(te_x)
 
-        return df_te_pred
+        return df_te_pred.sort_values(self.key_cols) 
 
 
-    def plot_feature_importance_cv(self) -> None:
-        """CVで学習した各foldのモデルの平均により、特徴量の重要度を取得する
-        """
-        list_feat_imp = []
-        for i_fold in range(self.n_splits):
-            model = self.build_model(i_fold)
-            model.load_model()
-            list_feat_imp.append(model.get_feature_importance())
-        df_feat_imp = pd.concat([pd.Series(feat_imp) for feat_imp in list_feat_imp], axis=1)
+    def plot_feature_importance_term(self, list_list_df_importance, term, ax1) -> None:      
+        """cvのterm毎の特徴量の重要度をプロットする
+        """ 
+        # 各foldの指定したtermの特徴量の重要度を取得
+        list_importance = []
+        for list_df_importance in list_list_df_importance:
+            importance = list_df_importance[term-1]["importance"].values
+            list_importance.append(importance)
 
-        # 各foldの平均を算出
-        # 各foldの標準偏差を算出
-        df_feat_imp_ = pd.DataFrame({
-            'feature': self.df_test.drop(columns=REMOVED_COL).columns,
-            'mean': df_feat_imp.mean(axis=1),
-            'std': df_feat_imp.std(axis=1)
-        }).sort_values('mean')
+        df_importance = pd.DataFrame({
+            "feature": list_list_df_importance[0][term-1]["feature"],
+            "mean": np.mean(list_importance, axis=0),
+            "std": np.std(list_importance, axis=0)
+        })
 
-        df = df_feat_imp_
+        df = df_importance
         # 変動係数を算出
         df['coef_of_var'] = df['std'] / df['mean']
         df['coef_of_var'] = df['coef_of_var'].fillna(0)
         df = df.sort_values('mean', ascending=True)
 
-        # 出力
-        fig, ax1 = plt.subplots(figsize = (10, 30))
-        plt.tick_params(labelsize=12) # 図のラベルのfontサイズ
-        plt.tight_layout()
-
         # 棒グラフを出力
-        ax1.set_title('feature importance gain')
+        ax1.set_title(f'feature importance gain term {term}')
         ax1.set_xlabel('feature importance mean & std')
         ax1.barh(df["feature"], df['mean'], label='mean',  align="center", alpha=0.6)
         ax1.barh(df["feature"], df['std'], label='std',  align="center", alpha=0.6)
@@ -433,50 +447,38 @@ class MLModelRunner(TimeseriesModelRunner):
         ax1.grid(True)
         ax2.grid(False)
 
+        
+
+
+    def plot_feature_importance_cv(self) -> None:
+        """CVで学習した各foldのモデルの平均により、特徴量の重要度を取得する
+        """
+        self.logger.info(f'{self.run_name} - start plot feature importance cv')
+
+        # 各foldの特徴量の重要度を取得
+        list_list_df_importance = []
+        for i_fold in self.get_cv_folds():
+            model = self.build_model(i_fold)
+            model.load_model()
+            list_list_df_importance.append(model.get_feature_importance())
+
+        fig = plt.figure(figsize = (100, 30))
+        for term in range(1, 24):
+            ax = fig.add_subplot(1, 24, term)
+            self.plot_feature_importance_term(list_list_df_importance, term, ax)
+        plt.tick_params(labelsize=12) # 図のラベルのfontサイズ
+        plt.tight_layout()
         # 図を保存
-        path_output = os.path.join(DIR_FIGURE, f'{self.run_name}_fi_gain.png')
+        path_output = os.path.join(self.out_dir_name, f'fi_gain.png')
         plt.savefig(path_output, dpi=300, bbox_inches="tight")
         plt.close()
 
-        self.logger.info(f"output feature importance : {path_output}")
+        self.logger.info(f'{self.run_name} - end plot feature importance cv')
 
 
 
 
 ####### model utils ##################################################################
-
-
-    def shap_feature_importance(self) -> None:
-        """計算したshap値を可視化して保存する
-        """
-        all_columns = self.train_x.columns.values.tolist() + [self.target]
-        ma_shap = pd.DataFrame(sorted(zip(abs(self.shap_values).mean(axis=0), all_columns), reverse=True),
-                        columns=['Mean Abs Shapley', 'Feature']).set_index('Feature')
-        ma_shap = ma_shap.sort_values('Mean Abs Shapley', ascending=True)
-
-        # 可視化
-        fig = plt.figure(figsize = (8,30))
-        plt.tick_params(labelsize=12) # 図のラベルのfontサイズ
-        ax = fig.add_subplot(1,1,1)
-        ax.set_title('shap value')
-        ax.barh(ma_shap.index, ma_shap['Mean Abs Shapley'] , label='Mean Abs Shapley',  align="center", alpha=0.8)
-        labels = ax.get_xticklabels()
-        plt.setp(labels, rotation=0, fontsize=10)
-        ax.legend(loc = 'upper left')
-        plt.savefig(FIGURE_DIR_NAME + self.run_name + '_shap.png', dpi=300, bbox_inches="tight")
-        plt.close()
-
-
-
-    def get_feature_name(self):
-        """ 学習に使用した特徴量を返却
-        """
-        return self.train_x.columns.values.tolist()
-
-    def get_params(self):
-        """ 学習に使用したハイパーパラメータを返却
-        """
-        return self.params
     
 
     def tune_param(self, tr_x, tr_y, va_x, va_y):
