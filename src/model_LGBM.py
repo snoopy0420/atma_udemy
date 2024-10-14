@@ -39,7 +39,7 @@ class model_LGBM_multimodel(Model):
         self.term_max = 23 # 予測対象の時間範囲
         os.makedirs(self.base_dir, exist_ok=True)
 
-    def create_dataset(self, data, term, feat_cols, is_test=False):
+    def create_dataset(self, data, term, feat_cols):
         """データセットの作成
         termを指定してterm期先のterget_colから正解データを作成
         train,validにデータセットを分割
@@ -48,59 +48,48 @@ class model_LGBM_multimodel(Model):
             data(pd.DataFrame): 学習データ[key_cols, target_col, predict, 特徴量]
             term(int): 予測期間
             feat_cols(list): 特徴量
-            is_test(bool): テストデータの場合
         Returns:
             tr_x: 学習データの特徴量
             tr_y: 学習データの目的変数
             va_x: バリデーションデータの特徴量
             va_y: バリデーションデータの目的変数
-        """
-        tr_x, tr_y, va_x, va_y = [], [], [], []
-        va_start_date = data['datetime'].max().replace(day=1, hour=0)
-        
+        """        
         # 訓練データと検証データに分割
-        tr = data[data["datetime"] < va_start_date]
-        va = data[data["datetime"] >= va_start_date]
+        va_start_date = data['datetime'].max().replace(day=1, hour=0) # 最新月の1日
+        tr = data[data["datetime"] < va_start_date].copy()
+        va = data[data["datetime"] >= va_start_date].copy()
         
         # vaの2014-09-01以前のデータをpredict=2にする
         va.loc[va["datetime"] < "2014-09-01", "predict"] = 2
-        
-        for station_id in tr["station_id"].unique():            
-            tr_ = tr[tr["station_id"] == station_id]
-            va_ = va[va["station_id"] == station_id]
-            
-            # 正解データの作成
-            target_col_term = f"{self.target_col}_term{term}"
-            tr_ = tr_.sort_values("datetime")
-            va_ = va_.sort_values("datetime")
-            
-            tr_[target_col_term] = tr_[self.target_col].shift(-term)
-            va_[target_col_term] = va_[self.target_col].shift(-term)
-            
-            # vaのうち正解データのpredict==2となるデータを検証データに使う
-            predict_col_term = f"predict_term{term}"
-            va_[predict_col_term] = va_["predict"].shift(-term)
-            va_ = va_[va_[predict_col_term] == 2]
-            va_ = va_.drop(columns=[predict_col_term])
-            
-            # 00:00のデータを抽出
-            tr_ = tr_[tr_["datetime"].dt.hour == 0]
-            va_ = va_[va_["datetime"].dt.hour == 0]
-            
-            # 正解データが欠損している行を削除
-            tr_ = tr_.dropna(subset=[target_col_term])
-            va_ = va_.dropna(subset=[target_col_term])
-            
-            # x,yに分割
-            tr_x.append(tr_[feat_cols])
-            tr_y.append(tr_[[target_col_term]])
-            va_x.append(va_[feat_cols])
-            va_y.append(va_[[target_col_term]])
-            
-            # メモリ解放
-            del tr_, va_
-            gc.collect()
-        tr_x, tr_y, va_x, va_y = pd.concat(tr_x, axis=0), pd.concat(tr_y, axis=0), pd.concat(va_x, axis=0), pd.concat(va_y, axis=0)
+
+        # 正解データのシフト処理
+        target_col_term = f"{self.target_col}_term{term}"
+        tr[target_col_term] = tr.groupby("station_id")[self.target_col].shift(-term)
+        va[target_col_term] = va.groupby("station_id")[self.target_col].shift(-term)
+
+        # vaのうち、正解データのpredict == 2 のデータを検証データに使用
+        predict_col_term = f"predict_term{term}"
+        va[predict_col_term] = va.groupby("station_id")["predict"].shift(-term)
+        va = va[va[predict_col_term] == 2]
+        va = va.drop(columns=[predict_col_term])
+
+        # 00:00のデータのみを抽出
+        tr = tr[tr["datetime"].dt.hour == 0]
+        va = va[va["datetime"].dt.hour == 0]
+
+        # 正解データが欠損している行を削除
+        tr = tr.dropna(subset=[target_col_term])
+        va = va.dropna(subset=[target_col_term])
+
+        # 特徴量とターゲットを分割
+        tr_x = tr[feat_cols]
+        tr_y = tr[[target_col_term]]
+        va_x = va[feat_cols]
+        va_y = va[[target_col_term]]
+
+        # メモリ解放
+        del tr, va
+        gc.collect()
 
         return tr_x, tr_y, va_x, va_y
     
@@ -117,6 +106,7 @@ class model_LGBM_multimodel(Model):
         for term in range(1, self.term_max+1):
             # データセットの作成
             tr_x, tr_y, va_x, va_y = self.create_dataset(data, term, self.feat_cols)
+            print(f"term: {term}, tr_x: {tr_x.shape}, tr_y: {tr_y.shape}, va_x: {va_x.shape}, va_y: {va_y.shape}")
             dtrain = lgb.Dataset(tr_x, tr_y)
             dvalid = lgb.Dataset(va_x, va_y)
 
