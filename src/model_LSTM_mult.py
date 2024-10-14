@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.preprocessing import MinMaxScaler
+import matplotlib.pyplot as plt
 
 
 # 定数の読み込み
@@ -153,6 +154,7 @@ class model_LSTM_mult(Model):
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
 
         # トレーニングループ
+        train_losses = []
         for epoch in range(self.num_epochs):
             self.model.train()
             for i, (inputs, targets) in enumerate(tr_loader):
@@ -164,7 +166,11 @@ class model_LSTM_mult(Model):
                 loss.backward()
                 optimizer.step()
                 
-            self.logger.info(f'Epoch [{epoch+1}/{self.num_epochs}], Loss: {loss.item():.4f}')
+            train_losses.append(loss.item())
+            print(f'Epoch [{epoch+1}/{self.num_epochs}], Loss: {loss.item():.4f}')
+
+        # 学習曲線の保存
+        self.plot_learning_curve(train_losses)
 
 
     def predict(self, va):
@@ -237,4 +243,19 @@ class model_LSTM_mult(Model):
         self.model.eval()  # 評価モードに切り替え
         self.scaler = Util.load(path_scaler)
         self.scaler_for_inverse = Util.load(path_scaler_for_inverse)
+
+
+    def plot_learning_curve(self, train_losses):
+        """
+        学習曲線をプロット
+        """
+        # 学習曲線のプロット
+        plt.plot(train_losses, label="Training Loss")
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss")
+        plt.title("LSTM Training Loss Curve")
+        plt.legend()
+        save_path = os.path.join(self.base_dir, 'learning_curve.png')
+        plt.savefig(save_path)
+        plt.close()
 

@@ -90,6 +90,22 @@ class TimeseriesModelRunner:
 
         return tr, va
     
+    def after_predict_process(self, df_pred):
+        """予測後に行う処理
+        Args:
+            df_pred(pd.DataFrame): 予測データ[key_cols, 予測値]
+        """
+        # 負の値を0に変換
+        df_pred[self.target_col] = df_pred[self.target_col].clip(lower=0)
+
+        # dock_countを超えないようにする
+        df_prep_station = pd.read_pickle(os.path.join(DIR_INTERIM, "df_prep_station.pkl"))
+        df_dock_count = df_prep_station[["station_id", "dock_count"]]
+        df_pred = pd.merge(df_pred, df_dock_count, on="station_id", how="left")
+        df_pred[self.target_col] = df_pred[self.target_col].clip(upper=df_pred["dock_count"])
+
+        return df_pred
+    
 
     def craete_train_valid_dateset(self, i_fold):
         """
@@ -151,6 +167,9 @@ class TimeseriesModelRunner:
         df_va_true = pd.concat(list_va_true, axis=0).sort_values(self.key_cols)
         df_va_pred = pd.concat(list_va_pred, axis=0).sort_values(self.key_cols)
 
+        # 後処理
+        df_va_pred = self.after_predict_process(df_va_pred)
+
         # 欠損値補完前の目的変数がNaNの行を削除
         status_data = pd.read_pickle(os.path.join(DIR_INTERIM, "status_data.pkl"))[self.key_cols + [self.target_col]]
         status_data = status_data.rename(columns={self.target_col: "target"})
@@ -174,17 +193,19 @@ class TimeseriesModelRunner:
         model = self.build_model(i_fold)
         model.load_model()
 
-        # テストデータの予測
+        # 予測
         list_te_pred = []
         for te_date in list_te_date:
             te_datetime = pd.to_datetime(te_date)
             te = tr_va_te[tr_va_te["datetime"]<=te_datetime.replace(hour=0)]
             te_pred = model.predict(te)
             list_te_pred.append(te_pred)
-
         df_te_pred = pd.concat(list_te_pred, axis=0).sort_values(self.key_cols)
 
-        return df_te_pred
+        # 後処理
+        df_te_pred = self.after_predict_process(df_te_pred)
+
+        return df_te_pred.sort_values(self.key_cols) 
     
 
     def get_cv_folds(self):
@@ -380,6 +401,9 @@ class MLModelRunner(TimeseriesModelRunner):
         df_va_pred = df_va_pred.sort_values(self.key_cols)
         df_va_true = df_va_true.sort_values(self.key_cols)
 
+        # 後処理
+        df_va_pred = self.after_predict_process(df_va_pred)
+
         # 欠損値補完前の目的変数がNaNの行を削除
         status_data = pd.read_pickle(os.path.join(DIR_INTERIM, "status_data.pkl"))[self.key_cols + [self.target_col]]
         status_data = status_data.rename(columns={self.target_col: "target"})
@@ -403,6 +427,9 @@ class MLModelRunner(TimeseriesModelRunner):
         model = self.build_model(i_fold)
         model.load_model()
         df_te_pred = model.predict(te_x)
+
+        # 後処理
+        df_te_pred = self.after_predict_process(df_te_pred)
 
         return df_te_pred.sort_values(self.key_cols) 
 
