@@ -171,10 +171,10 @@ class TimeseriesModelRunner:
         df_va_pred = self.after_predict_process(df_va_pred)
 
         # 欠損値補完前の目的変数がNaNの行を削除
-        status_data = pd.read_pickle(os.path.join(DIR_INTERIM, "status_data.pkl"))[self.key_cols + [self.target_col]]
-        status_data = status_data.rename(columns={self.target_col: "target"})
-        df_va_true = pd.merge(df_va_true, status_data, on=self.key_cols, how="inner")
-        df_va_pred = pd.merge(df_va_pred, status_data, on=self.key_cols, how="inner")
+        target_data = pd.read_pickle(os.path.join(DIR_INTERIM, "df_target_all.pkl"))[self.key_cols + [self.target_col]]
+        target_data = target_data.rename(columns={self.target_col: "target"})
+        df_va_true = pd.merge(df_va_true, target_data, on=self.key_cols, how="inner")
+        df_va_pred = pd.merge(df_va_pred, target_data, on=self.key_cols, how="inner")
         df_va_true = df_va_true.dropna(subset=["target"])
         df_va_pred = df_va_pred.dropna(subset=["target"])
         
@@ -405,10 +405,10 @@ class MLModelRunner(TimeseriesModelRunner):
         df_va_pred = self.after_predict_process(df_va_pred)
 
         # 欠損値補完前の目的変数がNaNの行を削除
-        status_data = pd.read_pickle(os.path.join(DIR_INTERIM, "status_data.pkl"))[self.key_cols + [self.target_col]]
-        status_data = status_data.rename(columns={self.target_col: "target"})
-        df_va_true = pd.merge(df_va_true, status_data, on=self.key_cols, how="inner")
-        df_va_pred = pd.merge(df_va_pred, status_data, on=self.key_cols, how="inner")
+        target_data = pd.read_pickle(os.path.join(DIR_INTERIM, "df_target_all.pkl"))[self.key_cols + [self.target_col]]
+        target_data = target_data.rename(columns={self.target_col: "target"})
+        df_va_true = pd.merge(df_va_true, target_data, on=self.key_cols, how="inner")
+        df_va_pred = pd.merge(df_va_pred, target_data, on=self.key_cols, how="inner")
         df_va_true = df_va_true.dropna(subset=["target"])
         df_va_pred = df_va_pred.dropna(subset=["target"])
 
