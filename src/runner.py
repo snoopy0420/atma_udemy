@@ -48,6 +48,8 @@ class TimeseriesModelRunner:
         self.run_name = run_name
         self.model_cls = model_cls
         self.params = params
+        # run_setting
+        self.after_pred_func = run_setting.get("after_pred_func")
         # cv_setting
         self.target_col = cv_setting.get("target_col") # str
         self.key_cols = cv_setting.get("key_cols") # list
@@ -89,22 +91,6 @@ class TimeseriesModelRunner:
         #     va = pd.merge(va, va_, on=self.key, how='left')
 
         return tr, va
-    
-    def after_predict_process(self, df_pred):
-        """予測後に行う処理
-        Args:
-            df_pred(pd.DataFrame): 予測データ[key_cols, 予測値]
-        """
-        # 負の値を0に変換
-        df_pred[self.target_col] = df_pred[self.target_col].clip(lower=0)
-
-        # dock_countを超えないようにする
-        df_prep_station = pd.read_pickle(os.path.join(DIR_INTERIM, "df_prep_station.pkl"))
-        df_dock_count = df_prep_station[["station_id", "dock_count"]]
-        df_pred = pd.merge(df_pred, df_dock_count, on="station_id", how="left")
-        df_pred[self.target_col] = df_pred[self.target_col].clip(upper=df_pred["dock_count"])
-
-        return df_pred
     
 
     def craete_train_valid_dateset(self, i_fold):
@@ -168,7 +154,7 @@ class TimeseriesModelRunner:
         df_va_pred = pd.concat(list_va_pred, axis=0).sort_values(self.key_cols)
 
         # 後処理
-        df_va_pred = self.after_predict_process(df_va_pred)
+        df_va_pred = self.after_pred_func(df_va_pred, self.target_col)
 
         # 欠損値補完前の目的変数がNaNの行を削除
         target_data = pd.read_pickle(os.path.join(DIR_INTERIM, "df_target_all.pkl"))[self.key_cols + [self.target_col]]
@@ -203,7 +189,7 @@ class TimeseriesModelRunner:
         df_te_pred = pd.concat(list_te_pred, axis=0).sort_values(self.key_cols)
 
         # 後処理
-        df_te_pred = self.after_predict_process(df_te_pred)
+        df_te_pred = self.after_pred_func(df_te_pred, self.target_col)
 
         return df_te_pred.sort_values(self.key_cols) 
     
@@ -402,7 +388,7 @@ class MLModelRunner(TimeseriesModelRunner):
         df_va_true = df_va_true.sort_values(self.key_cols)
 
         # 後処理
-        df_va_pred = self.after_predict_process(df_va_pred)
+        df_va_pred = self.after_pred_func(df_va_pred, self.target_col)
 
         # 欠損値補完前の目的変数がNaNの行を削除
         target_data = pd.read_pickle(os.path.join(DIR_INTERIM, "df_target_all.pkl"))[self.key_cols + [self.target_col]]
@@ -429,7 +415,7 @@ class MLModelRunner(TimeseriesModelRunner):
         df_te_pred = model.predict(te_x)
 
         # 後処理
-        df_te_pred = self.after_predict_process(df_te_pred)
+        df_te_pred = self.after_pred_func(df_te_pred, self.target_col)
 
         return df_te_pred.sort_values(self.key_cols) 
 
