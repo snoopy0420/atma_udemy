@@ -32,14 +32,20 @@ class model_ASMBL_demand_supply_intervention(Model):
         self.key_cols = self.params.pop("key_cols") # list
         self.target_col = self.params.pop("target_col") # str
         self.remove_cols = self.params.pop("remove_cols") # list
+        # models
+        self.demand_model_cls = self.params.pop("demand_model_cls")
+        self.supply_model_cls = self.params.pop("supply_model_cls")
+        self.intervention_model_cls = self.params.pop("intervention_model_cls")
+        self.demand_run_name = self.params.pop("demand_run_name")
+        self.supply_run_name = self.params.pop("supply_run_name")
+        self.intervention_run_name = self.params.pop("intervention_run_name")
         # オブジェクト
         self.models = []
         self.feat_cols = None
         self.base_dir = os.path.join(DIR_MODEL, self.run_fold_name)
-        self.term_max = 23 # 予測対象の時間範囲
         os.makedirs(self.base_dir, exist_ok=True)
 
-    def create_dataset(self, data, term, feat_cols):
+    def create_dataset(self, data):
         """データセットの作成
         termを指定してterm期先のterget_colから正解データを作成
         train,validにデータセットを分割
@@ -54,99 +60,124 @@ class model_ASMBL_demand_supply_intervention(Model):
             va_x: バリデーションデータの特徴量
             va_y: バリデーションデータの目的変数
         """        
-        # 訓練データと検証データに分割
-        va_start_date = data['datetime'].max().replace(day=1, hour=0) # 最新月の1日
-        tr = data[data["datetime"] < va_start_date].copy()
-        va = data[data["datetime"] >= va_start_date].copy()
+        # datasetの作成
+        X = data[data["datetime"].dt.hour==0].copy()
+        if self.target_col in X.columns:
+            X = X.dropna(subset=[self.target_col])
+        # モデル読み込み
+        demand_model, supply_model, intervention_model = self._load_models()
+        # 需要・供給・介入の予測
+        # demand
+        df_demand_pred = demand_model.predict(X)
+        # supply
+        df_supply_pred = supply_model.predict(X)
+        # intervention        
+        df_intervention_pred = intervention_model.predict(X)
         
-        # vaの2014-09-01以前のデータをpredict=2にする
-        va.loc[va["datetime"] < "2014-09-01", "predict"] = 2
+        # 0時時点のデータを付与
+        data_00 = data[data["datetime"].dt.hour==0][["station_id", "datetime", "bikes_available"]].copy()
+        data_00["date"] = data_00["datetime"].dt.date
+        data_00 = data_00.rename(columns={"bikes_available": "bikes_available_00"})
+        data_00 = data_00[["station_id", "date", "bikes_available_00"]]
+        df_pred = data[self.key_cols].copy()
+        df_pred["date"] = df_pred["datetime"].dt.date
+        df_pred = pd.merge(df_pred, data_00, on=["station_id", "date"], how="left")
+        df_pred = df_pred[["station_id", "datetime", "bikes_available_00"]].copy()
+        df_pred = pd.merge(df_pred, df_demand_pred, on=["station_id","datetime"], how="left")
+        df_pred = pd.merge(df_pred, df_supply_pred, on=["station_id","datetime"], how="left")
+        df_pred = pd.merge(df_pred, df_intervention_pred, on=["station_id","datetime"], how="left")
+        # 欠損値の削除
+        df_pred = df_pred.dropna()
+        self.model = None
 
-        # 正解データのシフト処理
-        target_col_term = f"{self.target_col}_term{term}"
-        tr[target_col_term] = tr.groupby("station_id")[self.target_col].shift(-term)
-        va[target_col_term] = va.groupby("station_id")[self.target_col].shift(-term)
-
-        # vaのうち、正解データのpredict == 2 のデータを検証データに使用
-        predict_col_term = f"predict_term{term}"
-        va[predict_col_term] = va.groupby("station_id")["predict"].shift(-term)
-        va = va[va[predict_col_term] == 2]
-        va = va.drop(columns=[predict_col_term])
-
-        # 00:00のデータのみを抽出
-        tr = tr[tr["datetime"].dt.hour == 0]
-        va = va[va["datetime"].dt.hour == 0]
-
-        # 正解データが欠損している行を削除
-        tr = tr.dropna(subset=[target_col_term])
-        va = va.dropna(subset=[target_col_term])
-
-        # 特徴量とターゲットを分割
-        tr_x = tr[feat_cols]
-        tr_y = tr[[target_col_term]]
-        va_x = va[feat_cols]
-        va_y = va[[target_col_term]]
-
-        # メモリ解放
-        del tr, va
-        gc.collect()
-
-        return tr_x, tr_y, va_x, va_y
+        return df_pred
     
+    def _load_models(self):
+        """モデルの読み込み
+        """
+        i_fold = self.run_fold_name.split("_")[-1]
+        demand_run_fold_name = f"{self.demand_run_name}_{i_fold}"
+        supply_run_fold_name = f"{self.supply_run_name}_{i_fold}"
+        intervention_run_fold_name = f"{self.intervention_run_name}_{i_fold}"
+        with open(os.path.join(DIR_MODEL, self.demand_run_name, "params.yaml"), encoding="utf-8") as file:
+            demand_params = yaml.safe_load(file)
+        with open(os.path.join(DIR_MODEL, self.supply_run_name, "params.yaml"), encoding="utf-8") as file:
+            supply_params = yaml.safe_load(file)
+        with open(os.path.join(DIR_MODEL, self.intervention_run_name, "params.yaml"), encoding="utf-8") as file:
+            intervention_params = yaml.safe_load(file)
+        demand_model = self.demand_model_cls(demand_run_fold_name, demand_params, self.logger)
+        demand_model.load_model()
+        supply_model = self.supply_model_cls(supply_run_fold_name, supply_params, self.logger)
+        supply_model.load_model()
+        intervention_model = self.intervention_model_cls(intervention_run_fold_name, intervention_params, self.logger)
+        intervention_model.load_model()
+
+        return demand_model, supply_model, intervention_model
+
+        
     def train(self, data):
         """
         Args:
             data(pd.DataFrame): 学習データ[key_cols, target_col, predict, 特徴量]
         """
-        # 特徴量
-        self.feat_cols = [col for col in data.columns if col not in self.key_cols+[self.target_col]+self.remove_cols]
+        df_target = data[self.key_cols+[self.target_col]].copy()
+        df_train = self.create_dataset(data)
+        df_train_target = pd.merge(df_train, df_target, on=self.key_cols, how="inner")
+        va_start_date = df_train_target['datetime'].max().replace(day=1, hour=0) # 最新月の1日
+        tr = df_train_target[df_train_target["datetime"] < va_start_date].copy()
+        va = df_train_target[df_train_target["datetime"] >= va_start_date].copy()
+        tr_x = tr.drop(columns=self.key_cols+[self.target_col])
+        tr_y = tr[self.target_col]
+        va_x = va.drop(columns=self.key_cols+[self.target_col])
+        va_y = va[self.target_col]
+        print(tr_x.shape, tr_y.shape, va_x.shape, va_y.shape) 
+        dtrain = lgb.Dataset(tr_x, tr_y)
+        dvalid = lgb.Dataset(va_x, va_y)
 
-        # 1~23期モデルを学習
-        evals_results = []
-        for term in range(1, self.term_max+1):
-            # データセットの作成
-            tr_x, tr_y, va_x, va_y = self.create_dataset(data, term, self.feat_cols)
-            print(f"term: {term}, tr_x: {tr_x.shape}, tr_y: {tr_y.shape}, va_x: {va_x.shape}, va_y: {va_y.shape}")
-            dtrain = lgb.Dataset(tr_x, tr_y)
-            dvalid = lgb.Dataset(va_x, va_y)
+        # ハイパーパラメータ
+        params = self.params.copy()
+        num_round = params.pop('num_boost_round')
+        early_stopping_rounds = params.pop('early_stopping_rounds')
+        verbose = params.pop('verbose')
+        period = params.pop('period')
 
-            # ハイパーパラメータ
-            params = self.params.copy()
-            num_round = params.pop('num_boost_round')
-            early_stopping_rounds = params.pop('early_stopping_rounds')
-            verbose = params.pop('verbose')
-            period = params.pop('period')
-
-            # 学習
-            evals_result = {}
-            model = lgb.train(
-                params,
-                dtrain,
-                num_round,
-                valid_sets=(dtrain, dvalid),
-                valid_names=("train", "eval"),
-                callbacks=[lgb.early_stopping(stopping_rounds=early_stopping_rounds, verbose=verbose),
-                           lgb.log_evaluation(period=period),
-                           lgb.record_evaluation(evals_result)],
-                # feval=self.custum_eval, # カスタム評価関数
-                # fobj=ModelLGB.custum_loss, # カスタム目的関数
-            )
-
-            self.models.append(model)
-            evals_results.append(evals_result)
+        # 学習
+        evals_result = {}
+        self.model = lgb.train(
+            params,
+            dtrain,
+            num_round,
+            valid_sets=(dtrain, dvalid),
+            valid_names=("train", "eval"),
+            callbacks=[lgb.early_stopping(stopping_rounds=early_stopping_rounds, verbose=verbose),
+                        lgb.log_evaluation(period=period),
+                        lgb.record_evaluation(evals_result)],
+            # feval=self.custum_eval, # カスタム評価関数
+            # fobj=ModelLGB.custum_loss, # カスタム目的関数
+        )
 
         # 学習曲線を保存
-        self.plot_learning_curve(evals_results)
+        self.plot_learning_curve(evals_result)
 
-
-    def predict_term(self, te, term):
-        """term先の予測
+    def plot_learning_curve(self, evals_result):
+        """学習過程の可視化
         """
-        model = self.models[term-1]
-        te_x = te[self.feat_cols]
-        pred = model.predict(te_x, num_iteration=model.best_iteration)
+        fig, ax = plt.subplots(figsize=(12,8))
+        plt.tick_params(labelsize=12) # 図のラベルのfontサイズ
+        plt.tight_layout()
+        plt.title('Learning curve')
 
-        return pred
+        ax.plot(evals_result['train']["l1"], label="train")
+        ax.plot(evals_result['eval']["l1"], label="valid")
+        ax.set_xlabel('epoch')
+        ax.set_ylabel("AUC")
+        ax.legend()
+        ax.grid(True)
+
+        save_path = os.path.join(self.base_dir, 'learning_curve.png')
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.close()
+
     
     def predict(self, te):
         """予測
@@ -155,18 +186,11 @@ class model_ASMBL_demand_supply_intervention(Model):
         Returns:
             df_te_pred: 予測対象の1~23期の予測結果 [key_cols, target_col]
         """
-        # staion_id単位に1~23期の予測
-        list_df_pred = []
-        for station_id in te["station_id"].unique():
-            te_ = te[te["station_id"]==station_id].copy()
-            for term in range(1, self.term_max+1):
-                pred = self.predict_term(te_, term)
-                df_pred = te_[self.key_cols].copy()
-                df_pred["datetime"] = df_pred["datetime"] + pd.Timedelta(hours=term)
-                df_pred[self.target_col] = pred
-                list_df_pred.append(df_pred)
-        df_te_pred = pd.concat(list_df_pred, axis=0)
-        return df_te_pred.sort_values(self.key_cols)
+        df_pred = self.create_dataset(te)
+        te_x = df_pred.drop(columns=self.key_cols)
+        pred = self.model.predict(te_x, num_iteration=self.model.best_iteration)
+        df_pred[self.target_col] = pred
+        return df_pred[self.key_cols+[self.target_col]].sort_values(self.key_cols)
 
 
     def save_model(self) -> None:
@@ -174,39 +198,20 @@ class model_ASMBL_demand_supply_intervention(Model):
         モデルを保存する
         """
         os.makedirs(self.base_dir, exist_ok=True)
-        path_model = os.path.join(self.base_dir, 'models.pkl')
+        path_model = os.path.join(self.base_dir, 'model.pkl')
         path_feat_cols = os.path.join(self.base_dir, 'feat_cols.pkl')
-        Util.dump(self.models, path_model)
+        Util.dump(self.model, path_model)
         Util.dump(self.feat_cols, path_feat_cols)
 
     def load_model(self) -> None:
         """
         モデルを読み込む
         """
-        path_model = os.path.join(self.base_dir, 'models.pkl')
+        path_model = os.path.join(self.base_dir, 'model.pkl')
         path_feat_cols = os.path.join(self.base_dir, 'feat_cols.pkl')
-        self.models = Util.load(path_model)
+        self.model = Util.load(path_model)
         self.feat_cols = Util.load(path_feat_cols)
 
-
-    def plot_learning_curve(self, evals_results):
-        """23期分の学習曲線を保存
-        """
-        # 23期分の学習曲線をaxを分けて描画し保存する
-        fig, ax = plt.subplots(4, 6, figsize=(24, 16))
-        for term in range(1, self.term_max+1):
-            ax_ = ax[(term-1)//6][(term-1)%6]
-            ax_.plot(evals_results[term-1]['train']['l1'], label='train')
-            ax_.plot(evals_results[term-1]['eval']['l1'], label='eval')
-            ax_.set_title(f'Term {term} Learning Curve')
-            ax_.set_xlabel('Iterations')
-            ax_.set_ylabel('L1 Loss')
-            ax_.legend()
-        save_path = os.path.join(self.base_dir, 'learning_curve.png')
-        plt.tick_params(labelsize=12) # 図のラベルのfontサイズ
-        plt.tight_layout()
-        plt.savefig(save_path)
-        plt.close()
 
     
     def get_feature_importance(self):

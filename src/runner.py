@@ -163,6 +163,8 @@ class TimeseriesModelRunner:
         df_va_pred = pd.merge(df_va_pred, target_data, on=self.key_cols, how="inner")
         df_va_true = df_va_true.dropna(subset=["target"])
         df_va_pred = df_va_pred.dropna(subset=["target"])
+        df_va_pred = df_va_pred.drop(columns=["target"])
+        df_va_true = df_va_true.drop(columns=["target"])
         
         # バリデーションデータの評価
         va_score = self.metric(df_va_true[self.target_col].values, df_va_pred[self.target_col].values)
@@ -397,6 +399,8 @@ class MLModelRunner(TimeseriesModelRunner):
         df_va_pred = pd.merge(df_va_pred, target_data, on=self.key_cols, how="inner")
         df_va_true = df_va_true.dropna(subset=["target"])
         df_va_pred = df_va_pred.dropna(subset=["target"])
+        df_va_pred = df_va_pred.drop(columns=["target"])
+        df_va_true = df_va_true.drop(columns=["target"])
 
         score = self.metric(df_va_true[self.target_col].values, df_va_pred[self.target_col].values)
 
