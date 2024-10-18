@@ -376,6 +376,8 @@ class MLModelRunner(TimeseriesModelRunner):
         # データセットの準備
         _, va, _  = self.create_train_valid_dateset(i_fold)
 
+        print(va.shape)
+
         # 予測値
         va_0 = va[va["datetime"].dt.hour==0]
         model = self.build_model(i_fold)

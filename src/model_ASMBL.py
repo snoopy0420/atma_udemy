@@ -40,7 +40,7 @@ class model_ASMBL_demand_supply_intervention(Model):
         self.supply_run_name = self.params.pop("supply_run_name")
         self.intervention_run_name = self.params.pop("intervention_run_name")
         # オブジェクト
-        self.models = []
+        self.model = None
         self.feat_cols = None
         self.base_dir = os.path.join(DIR_MODEL, self.run_fold_name)
         os.makedirs(self.base_dir, exist_ok=True)
@@ -59,7 +59,7 @@ class model_ASMBL_demand_supply_intervention(Model):
             tr_y: 学習データの目的変数
             va_x: バリデーションデータの特徴量
             va_y: バリデーションデータの目的変数
-        """        
+        """      
         # datasetの作成
         X = data[data["datetime"].dt.hour==0].copy()
         if self.target_col in X.columns:
@@ -79,21 +79,19 @@ class model_ASMBL_demand_supply_intervention(Model):
         data_00["date"] = data_00["datetime"].dt.date
         data_00 = data_00.rename(columns={"bikes_available": "bikes_available_00"})
         data_00 = data_00[["station_id", "date", "bikes_available_00"]]
-        df_pred = data[self.key_cols].copy()
-        df_pred["date"] = df_pred["datetime"].dt.date
-        df_pred = pd.merge(df_pred, data_00, on=["station_id", "date"], how="left")
-        df_pred = df_pred[["station_id", "datetime", "bikes_available_00"]].copy()
-        df_pred = pd.merge(df_pred, df_demand_pred, on=["station_id","datetime"], how="left")
+        df_pred = df_demand_pred.copy()
         df_pred = pd.merge(df_pred, df_supply_pred, on=["station_id","datetime"], how="left")
         df_pred = pd.merge(df_pred, df_intervention_pred, on=["station_id","datetime"], how="left")
+        df_pred["date"] = df_pred["datetime"].dt.date
+        df_pred = pd.merge(df_pred, data_00, on=["station_id", "date"], how="left")
         # 欠損値の削除
         df_pred = df_pred.dropna()
-        self.model = None
 
-        return df_pred
+        return df_pred.sort_values(self.key_cols)
     
     def _load_models(self):
-        """モデルの読み込み
+        """
+        モデルを読み込む
         """
         i_fold = self.run_fold_name.split("_")[-1]
         demand_run_fold_name = f"{self.demand_run_name}_{i_fold}"
@@ -159,25 +157,6 @@ class model_ASMBL_demand_supply_intervention(Model):
         # 学習曲線を保存
         self.plot_learning_curve(evals_result)
 
-    def plot_learning_curve(self, evals_result):
-        """学習過程の可視化
-        """
-        fig, ax = plt.subplots(figsize=(12,8))
-        plt.tick_params(labelsize=12) # 図のラベルのfontサイズ
-        plt.tight_layout()
-        plt.title('Learning curve')
-
-        ax.plot(evals_result['train']["l1"], label="train")
-        ax.plot(evals_result['eval']["l1"], label="valid")
-        ax.set_xlabel('epoch')
-        ax.set_ylabel("AUC")
-        ax.legend()
-        ax.grid(True)
-
-        save_path = os.path.join(self.base_dir, 'learning_curve.png')
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
-        plt.close()
-
     
     def predict(self, te):
         """予測
@@ -187,7 +166,8 @@ class model_ASMBL_demand_supply_intervention(Model):
             df_te_pred: 予測対象の1~23期の予測結果 [key_cols, target_col]
         """
         df_pred = self.create_dataset(te)
-        te_x = df_pred.drop(columns=self.key_cols)
+        feat_cols = self.model.feature_name()
+        te_x = df_pred[feat_cols]
         pred = self.model.predict(te_x, num_iteration=self.model.best_iteration)
         df_pred[self.target_col] = pred
         return df_pred[self.key_cols+[self.target_col]].sort_values(self.key_cols)
@@ -212,6 +192,25 @@ class model_ASMBL_demand_supply_intervention(Model):
         self.model = Util.load(path_model)
         self.feat_cols = Util.load(path_feat_cols)
 
+
+    def plot_learning_curve(self, evals_result):
+        """学習過程の可視化
+        """
+        fig, ax = plt.subplots(figsize=(12,8))
+        plt.tick_params(labelsize=12) # 図のラベルのfontサイズ
+        plt.tight_layout()
+        plt.title('Learning curve')
+
+        ax.plot(evals_result['train']["l1"], label="train")
+        ax.plot(evals_result['eval']["l1"], label="valid")
+        ax.set_xlabel('epoch')
+        ax.set_ylabel("AUC")
+        ax.legend()
+        ax.grid(True)
+
+        save_path = os.path.join(self.base_dir, 'learning_curve.png')
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.close()
 
     
     def get_feature_importance(self):

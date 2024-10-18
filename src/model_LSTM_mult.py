@@ -1,6 +1,7 @@
 import os
 import sys
 import yaml
+import gc
 import numpy as np
 import pandas as pd
 import torch
@@ -82,13 +83,13 @@ class model_LSTM_mult(Model):
                         # 正解データ(dayの1~23時のデータ)の作成
                         next_day_data = station_data.loc[day+pd.Timedelta(hours=1): day+pd.Timedelta(hours=23)] # 予測対象の23時間分のデータ
                         if len(next_day_data) == n_steps:  # 予測対象の23時間分が揃っている場合
-                            y = next_day_data['bikes_available'].values
+                            y = next_day_data[self.target_col].values
                             # ターゲットカラムに欠損値がある場合はスキップ
                             if np.isnan(y).sum() > 0:
                                 continue
                             list_x.append(x)
                             list_y.append(y)
-                            list_key.append(next_day_data.reset_index()[key_cols])
+                            # list_key.append(next_day_data.reset_index()[key_cols])
             else:
                 # 最新断面のlist_xのみを作成
                 day_data = station_data
@@ -98,8 +99,9 @@ class model_LSTM_mult(Model):
                     next_days = pd.date_range(day_data.index.max()+pd.Timedelta(hours=1), day_data.index.max()+pd.Timedelta(hours=23), freq='h')
                     df_ = pd.DataFrame({"datetime": next_days, "station_id": station_id})
                     list_key.append(df_)
-                
-        return np.array(list_x), np.array(list_y), pd.concat(list_key, axis=0)
+                    list_key = pd.concat(list_key, axis=0)
+        print(len(list_x), len(list_y))
+        return np.array(list_x), np.array(list_y), list_key
     
 
     class LSTMModel(nn.Module):
@@ -136,29 +138,55 @@ class model_LSTM_mult(Model):
 
         # シーケンスの作成
         tr_X, tr_y, tr_key = self.create_sequences_for_forecast(tr_scale, self.key_cols, feat_cols, self.seq_length, self.n_steps)
+        print(tr_X.shape, tr_y.shape)
+
+        # デバイスを確認 (GPUがあればGPU、なければCPU)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # tensorに変換
-        tr_X_tensor = torch.tensor(tr_X, dtype=torch.float32)
-        tr_y_tensor = torch.tensor(tr_y, dtype=torch.float32)
+        # NumPy配列を明示的にfloat32に変換
+        # tr_X = tr_X.astype(np.float32)
+        # tr_y = tr_y.astype(np.float32)
+        # tr_X_tensor = torch.tensor(tr_X, dtype=torch.float32)
+        # tr_y_tensor = torch.tensor(tr_y, dtype=torch.float32)
+        # # バッチサイズを設定
+        batch_size = 100
+        # バッチごとにテンソルに変換
+        tr_X_tensors = []
+        tr_y_tensors = []
+        for i in range(0, len(tr_X), batch_size):
+            tr_X_tensors.append(torch.tensor(tr_X[i:i+batch_size], dtype=torch.float32).to(device))  # GPUに移動
+            tr_y_tensors.append(torch.tensor(tr_y[i:i+batch_size], dtype=torch.float32).to(device))  # GPUに移動
+        tr_X_tensor = torch.cat(tr_X_tensors, dim=0)
+        tr_y_tensor = torch.cat(tr_y_tensors, dim=0)
+        print(tr_X_tensor.shape, tr_y_tensor.shape)
 
         # データローダーを作成
+        gc.collect()
         tr_dataset = TensorDataset(tr_X_tensor, tr_y_tensor)
+        print(len(tr_dataset))
         tr_loader = DataLoader(tr_dataset, batch_size=self.batch_size, shuffle=self.shuffle)
-
-        # モデルパラメータの設定
-        self.input_size = tr_X_tensor.shape[2]  # 入力の次元
+        print(len(tr_loader))
 
         # モデルの初期化
-        self.model = self.LSTMModel(self.input_size, self.hidden_size, self.n_steps)
-        criterion = nn.L1Loss()
+        self.input_size = tr_X_tensor.shape[2]  # 入力の次元
+        print(self.input_size)
+        self.model = self.LSTMModel(self.input_size, self.hidden_size, self.n_steps).to(device)
+        print("model")
+        criterion = nn.L1Loss().to(device)
+        print("criterion")
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
 
+        print("start training")
         # トレーニングループ
         train_losses = []
         for epoch in range(self.num_epochs):
             self.model.train()
             for i, (inputs, targets) in enumerate(tr_loader):
             
+                # バッチごとにデータをGPUに移動（すでに移動してある場合は不要）
+                inputs, targets = inputs.to(device), targets.to(device)
+
                 outputs = self.model(inputs)
                 loss = criterion(outputs, targets)
                 
@@ -201,13 +229,17 @@ class model_LSTM_mult(Model):
         # シーケンスの作成
         va_X, va_y, va_key = self.create_sequences_for_forecast(va_scale, self.key_cols, feat_cols, self.seq_length, self.n_steps, is_test=True)
 
+        # デバイスを確認 (GPUがあればGPU、なければCPU)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         # テンソルに変換
-        va_X_tensor = torch.tensor(va_X, dtype=torch.float32)
+        va_X_tensor = torch.tensor(va_X, dtype=torch.float32).to(device)
 
         # 予測
         self.model.eval()
+        self.model.to(device)
         with torch.no_grad():
-            va_pred = self.model(va_X_tensor).numpy()
+            va_pred = self.model(va_X_tensor).cpu().numpy()
 
         # 予測結果を逆変換
         va_pred = self.scaler_for_inverse.inverse_transform(va_pred)
