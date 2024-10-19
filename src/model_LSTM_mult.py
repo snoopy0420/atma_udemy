@@ -196,6 +196,8 @@ class model_LSTM_mult(Model):
             train_losses.append(loss.item())
             print(f'Epoch [{epoch+1}/{self.num_epochs}], Loss: {loss.item():.4f}')
 
+        
+
         # 学習曲線の保存
         self.plot_learning_curve(train_losses)
 
@@ -246,6 +248,22 @@ class model_LSTM_mult(Model):
         va_key[self.target_col] = va_pred.reshape(-1, 1)
 
         return va_key
+
+    def predict_all(self, data):
+        """dataの全ての0時断面に対して23期先の予測を行う
+        """
+        # 予測結果の格納用
+        df_pred = []
+        need_days = int(self.seq_length/24)
+        for date in sorted(data['datetime'].dt.date.unique())[need_days:]:
+            # 予測対象のデータを取得
+            va = data[data['datetime']<=pd.to_datetime(date)]
+            # 予測
+            df_pred.append(self.predict(va))
+        df_pred = pd.concat(df_pred, axis=0)
+
+        return df_pred
+
     
     def save_model(self) -> None:
         """

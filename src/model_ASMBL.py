@@ -60,32 +60,51 @@ class model_ASMBL_demand_supply_intervention(Model):
             va_x: バリデーションデータの特徴量
             va_y: バリデーションデータの目的変数
         """      
-        # datasetの作成
-        X = data[data["datetime"].dt.hour==0].copy()
-        if self.target_col in X.columns:
-            X = X.dropna(subset=[self.target_col])
+        # print(data)
+        # # datasetの作成
+        # X = data[data["datetime"].dt.hour==0].copy()
+        # if self.target_col in X.columns:
+        #     X = X.dropna(subset=[self.target_col])
+        # # モデル読み込み
+        # demand_model, supply_model, intervention_model = self._load_models()
+        # # 需要・供給・介入の予測
+        # # demand
+        # df_demand_pred = demand_model.predict(X)
+        # # supply
+        # df_supply_pred = supply_model.predict(X)
+        # # intervention        
+        # df_intervention_pred = intervention_model.predict(X)
+
         # モデル読み込み
         demand_model, supply_model, intervention_model = self._load_models()
         # 需要・供給・介入の予測
         # demand
-        df_demand_pred = demand_model.predict(X)
+        df_demand_pred = demand_model.predict_all(data)
+        print(df_demand_pred.shape)
         # supply
-        df_supply_pred = supply_model.predict(X)
+        df_supply_pred = supply_model.predict_all(data)
+        print(df_supply_pred.shape)
         # intervention        
-        df_intervention_pred = intervention_model.predict(X)
+        df_intervention_pred = intervention_model.predict_all(data)
+        print(df_supply_pred.shape)
+
+        # 予測値
+        df_pred = df_demand_pred.copy()
+        df_pred = pd.merge(df_pred, df_supply_pred, on=["station_id","datetime"], how="left")
+        df_pred = pd.merge(df_pred, df_intervention_pred, on=["station_id","datetime"], how="left")
         
-        # 0時時点のデータを付与
+        # 各レコードにその日の0時時点のデータを付与
         data_00 = data[data["datetime"].dt.hour==0][["station_id", "datetime", "bikes_available"]].copy()
         data_00["date"] = data_00["datetime"].dt.date
         data_00 = data_00.rename(columns={"bikes_available": "bikes_available_00"})
         data_00 = data_00[["station_id", "date", "bikes_available_00"]]
-        df_pred = df_demand_pred.copy()
-        df_pred = pd.merge(df_pred, df_supply_pred, on=["station_id","datetime"], how="left")
-        df_pred = pd.merge(df_pred, df_intervention_pred, on=["station_id","datetime"], how="left")
         df_pred["date"] = df_pred["datetime"].dt.date
         df_pred = pd.merge(df_pred, data_00, on=["station_id", "date"], how="left")
+        df_pred = df_pred.drop(columns=["date"])
+
         # 欠損値の削除
         df_pred = df_pred.dropna()
+        print(df_pred.shape)
 
         return df_pred.sort_values(self.key_cols)
     
@@ -93,16 +112,19 @@ class model_ASMBL_demand_supply_intervention(Model):
         """
         モデルを読み込む
         """
+        # run_fold_name
         i_fold = self.run_fold_name.split("_")[-1]
         demand_run_fold_name = f"{self.demand_run_name}_{i_fold}"
         supply_run_fold_name = f"{self.supply_run_name}_{i_fold}"
         intervention_run_fold_name = f"{self.intervention_run_name}_{i_fold}"
+        # params
         with open(os.path.join(DIR_MODEL, self.demand_run_name, "params.yaml"), encoding="utf-8") as file:
             demand_params = yaml.safe_load(file)
         with open(os.path.join(DIR_MODEL, self.supply_run_name, "params.yaml"), encoding="utf-8") as file:
             supply_params = yaml.safe_load(file)
         with open(os.path.join(DIR_MODEL, self.intervention_run_name, "params.yaml"), encoding="utf-8") as file:
             intervention_params = yaml.safe_load(file)
+        # load_model
         demand_model = self.demand_model_cls(demand_run_fold_name, demand_params, self.logger)
         demand_model.load_model()
         supply_model = self.supply_model_cls(supply_run_fold_name, supply_params, self.logger)

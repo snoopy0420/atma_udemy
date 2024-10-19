@@ -168,6 +168,15 @@ class model_LGBM_multimodel(Model):
         df_te_pred = pd.concat(list_df_pred, axis=0)
         return df_te_pred.sort_values(self.key_cols)
 
+    def predict_all(self, data):
+        """与えられたデータの全ての0時断面に対して予測値を生成する
+        """
+        X = data[data["datetime"].dt.hour==0].copy()
+        if self.target_col in X.columns:
+            X = X.dropna(subset=[self.target_col])
+        df_pred = self.predict(X)
+        return df_pred
+
 
     def save_model(self) -> None:
         """
