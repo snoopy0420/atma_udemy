@@ -209,7 +209,6 @@ class model_LSTM_mult(Model):
         return: 
             df: columns[key_cols, target_col]
         """
-        print("hello")
         # vaの最新日付を抽出
         target_date = va["datetime"].max().date()
 
