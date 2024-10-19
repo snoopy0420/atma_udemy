@@ -49,8 +49,10 @@ class model_LSTM_mult(Model):
         self.hidden_size = params.get('hidden_size', 64)
         self.num_epochs = params.get('num_epochs', 20)
         self.learning_rate = params.get('learning_rate', 0.001)
+        self.weight_decay = params.get('weight_decay', 0)
         # オブジェクト
         self.model = None
+        self.feat_cols = None
         self.scaler = None
         self.scaler_for_inverse = None
         self.base_dir = os.path.join(DIR_MODEL, self.run_fold_name)
@@ -99,8 +101,9 @@ class model_LSTM_mult(Model):
                     next_days = pd.date_range(day_data.index.max()+pd.Timedelta(hours=1), day_data.index.max()+pd.Timedelta(hours=23), freq='h')
                     df_ = pd.DataFrame({"datetime": next_days, "station_id": station_id})
                     list_key.append(df_)
-                    list_key = pd.concat(list_key, axis=0)
-        print(len(list_x), len(list_y))
+        if is_test:
+            list_key = pd.concat(list_key, axis=0)
+        
         return np.array(list_x), np.array(list_y), list_key
     
 
@@ -129,19 +132,20 @@ class model_LSTM_mult(Model):
 
         # 標準化
         tr_scale = tr.copy()
-        feat_cols = [col for col in tr.columns.to_list() if col not in self.key_cols]
-        scale_cols = feat_cols + [self.target_col]
+        self.feat_cols = [col for col in tr.columns.to_list() if col not in self.key_cols]
+        scale_cols = self.feat_cols + [self.target_col]
         self.scaler = MinMaxScaler(feature_range=(0, 1))
         self.scaler_for_inverse = MinMaxScaler(feature_range=(0, 1))
         tr_scale[scale_cols] = self.scaler.fit_transform(tr[scale_cols])
         _ = self.scaler_for_inverse.fit_transform(tr[[self.target_col]])
 
         # シーケンスの作成
-        tr_X, tr_y, tr_key = self.create_sequences_for_forecast(tr_scale, self.key_cols, feat_cols, self.seq_length, self.n_steps)
-        print(tr_X.shape, tr_y.shape)
+        tr_X, tr_y, tr_key = self.create_sequences_for_forecast(tr_scale, self.key_cols, self.feat_cols, self.seq_length, self.n_steps)
+        print(tr_X.shape)
 
         # デバイスを確認 (GPUがあればGPU、なければCPU)
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(device)
 
         # tensorに変換
         # NumPy配列を明示的にfloat32に変換
@@ -149,9 +153,8 @@ class model_LSTM_mult(Model):
         # tr_y = tr_y.astype(np.float32)
         # tr_X_tensor = torch.tensor(tr_X, dtype=torch.float32)
         # tr_y_tensor = torch.tensor(tr_y, dtype=torch.float32)
-        # # バッチサイズを設定
+        # バッチごとにtensorに変換s
         batch_size = 100
-        # バッチごとにテンソルに変換
         tr_X_tensors = []
         tr_y_tensors = []
         for i in range(0, len(tr_X), batch_size):
@@ -159,25 +162,19 @@ class model_LSTM_mult(Model):
             tr_y_tensors.append(torch.tensor(tr_y[i:i+batch_size], dtype=torch.float32).to(device))  # GPUに移動
         tr_X_tensor = torch.cat(tr_X_tensors, dim=0)
         tr_y_tensor = torch.cat(tr_y_tensors, dim=0)
-        print(tr_X_tensor.shape, tr_y_tensor.shape)
 
         # データローダーを作成
         gc.collect()
         tr_dataset = TensorDataset(tr_X_tensor, tr_y_tensor)
-        print(len(tr_dataset))
         tr_loader = DataLoader(tr_dataset, batch_size=self.batch_size, shuffle=self.shuffle)
-        print(len(tr_loader))
 
         # モデルの初期化
         self.input_size = tr_X_tensor.shape[2]  # 入力の次元
-        print(self.input_size)
         self.model = self.LSTMModel(self.input_size, self.hidden_size, self.n_steps).to(device)
-        print("model")
         criterion = nn.L1Loss().to(device)
-        print("criterion")
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
 
-        print("start training")
         # トレーニングループ
         train_losses = []
         for epoch in range(self.num_epochs):
@@ -193,6 +190,8 @@ class model_LSTM_mult(Model):
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+
+            scheduler.step()
                 
             train_losses.append(loss.item())
             print(f'Epoch [{epoch+1}/{self.num_epochs}], Loss: {loss.item():.4f}')
@@ -210,6 +209,7 @@ class model_LSTM_mult(Model):
         return: 
             df: columns[key_cols, target_col]
         """
+        print("hello")
         # vaの最新日付を抽出
         target_date = va["datetime"].max().date()
 
@@ -222,12 +222,11 @@ class model_LSTM_mult(Model):
 
         # 標準化
         va_scale = va.copy()
-        feat_cols = [col for col in va.columns.to_list() if col not in self.key_cols]
-        scale_cols = feat_cols + [self.target_col]
+        scale_cols = self.feat_cols + [self.target_col]
         va_scale[scale_cols] = self.scaler.transform(va[scale_cols])
 
         # シーケンスの作成
-        va_X, va_y, va_key = self.create_sequences_for_forecast(va_scale, self.key_cols, feat_cols, self.seq_length, self.n_steps, is_test=True)
+        va_X, va_y, va_key = self.create_sequences_for_forecast(va_scale, self.key_cols, self.feat_cols, self.seq_length, self.n_steps, is_test=True)
 
         # デバイスを確認 (GPUがあればGPU、なければCPU)
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -257,10 +256,12 @@ class model_LSTM_mult(Model):
         path_model = os.path.join(self.base_dir, 'model.pkl')
         path_scaler = os.path.join(self.base_dir, 'scaler.pkl')
         path_scaler_for_inverse = os.path.join(self.base_dir, 'scaler_for_inverse.pkl')
+        path_feat_cols = os.path.join(self.base_dir, 'feat_cols.pkl')
         Util.dump(self.model, path_model)
-        # torch.save(self.model.state_dict(), path_model)  # モデルのパラメータを保存
         Util.dump(self.scaler, path_scaler)
         Util.dump(self.scaler_for_inverse, path_scaler_for_inverse)
+        Util.dump(self.feat_cols, path_feat_cols)
+
 
     def load_model(self) -> None:
         """
@@ -269,10 +270,10 @@ class model_LSTM_mult(Model):
         path_model = os.path.join(self.base_dir, 'model.pkl')
         path_scaler = os.path.join(self.base_dir, 'scaler.pkl')
         path_scaler_for_inverse = os.path.join(self.base_dir, 'scaler_for_inverse.pkl')
-        # self.model = self.LSTMModel(self.input_size, self.hidden_size, self.n_steps)
-        # self.model.load_state_dict(torch.load(path_model))
+        path_feat_cols = os.path.join(self.base_dir, 'feat_cols.pkl')
         self.model = Util.load(path_model)
         self.model.eval()  # 評価モードに切り替え
+        self.feat_cols = Util.load(path_feat_cols)
         self.scaler = Util.load(path_scaler)
         self.scaler_for_inverse = Util.load(path_scaler_for_inverse)
 
@@ -287,6 +288,7 @@ class model_LSTM_mult(Model):
         plt.ylabel("Loss")
         plt.title("LSTM Training Loss Curve")
         plt.legend()
+        os.makedirs(self.base_dir, exist_ok=True)
         save_path = os.path.join(self.base_dir, 'learning_curve.png')
         plt.savefig(save_path)
         plt.close()
