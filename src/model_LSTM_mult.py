@@ -50,6 +50,10 @@ class model_LSTM_mult(Model):
         self.num_epochs = params.get('num_epochs', 20)
         self.learning_rate = params.get('learning_rate', 0.001)
         self.weight_decay = params.get('weight_decay', 0)
+        self.num_layers = params.get('num_layers', 1)
+        self.dropout = params.get('dropout', 0)
+        self.step_size = params.get('step_size', 10)
+        self.gamma = params.get('gamma', 0.1)
         # オブジェクト
         self.model = None
         self.feat_cols = None
@@ -108,7 +112,7 @@ class model_LSTM_mult(Model):
     
 
     class LSTMModel(nn.Module):
-        def __init__(self, input_size, hidden_size, output_size, num_layers=1):
+        def __init__(self, input_size, hidden_size, output_size, num_layers, dropout):
             super().__init__()
             self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
             self.fc = nn.Linear(hidden_size, output_size)
@@ -170,10 +174,10 @@ class model_LSTM_mult(Model):
 
         # モデルの初期化
         self.input_size = tr_X_tensor.shape[2]  # 入力の次元
-        self.model = self.LSTMModel(self.input_size, self.hidden_size, self.n_steps).to(device)
+        self.model = self.LSTMModel(self.input_size, self.hidden_size, self.n_steps, self.num_layers, self.dropout).to(device)
         criterion = nn.L1Loss().to(device)
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=self.step_size, gamma=self.gamma)
 
         # トレーニングループ
         train_losses = []

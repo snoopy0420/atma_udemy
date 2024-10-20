@@ -104,6 +104,7 @@ class model_ASMBL_demand_supply_intervention(Model):
         df_pred = pd.merge(df_pred, data_00, on=["station_id", "date"], how="left")
         df_pred = df_pred.drop(columns=["date"])
 
+        # 予測値以外の特徴量を付与
         df_pred = pd.merge(df_pred, pd.read_pickle(os.path.join(DIR_FEATURE, "df_station_atr.pkl")), on=["station_id"], how="left")
         df_pred = pd.merge(df_pred, pd.read_pickle(os.path.join(DIR_FEATURE, "df_datetime_atr.pkl")), on=["datetime"], how="left")
 

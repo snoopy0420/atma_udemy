@@ -222,8 +222,11 @@ class TimeseriesModelRunner:
             self.logger.info(f'{self.run_name} fold {i_fold.date()} - end training')
 
         # パラメータの保存
-        path_output = os.path.join(self.out_dir_name, f'params.yaml')
-        Util.jump_json(self.params, path_output)
+        try:
+            path_output = os.path.join(self.out_dir_name, f'params.yaml')
+            Util.jump_json(self.params, path_output)
+        except:
+            self.logger.info("パラメータは保存しません")
 
         self.logger.info(f'{self.run_name} - end training cv')
 
