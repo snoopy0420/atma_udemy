@@ -6,6 +6,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import lightgbm as lgb
 import gc
+from dateutil.relativedelta import relativedelta
 
 
 # 定数の読み込み
@@ -103,8 +104,8 @@ class model_ASMBL_demand_supply_intervention(Model):
         df_pred = pd.merge(df_pred, data_00, on=["station_id", "date"], how="left")
         df_pred = df_pred.drop(columns=["date"])
 
-        df_pred = pd.merge(df_pred, pd.read_pickle(DIR_FEATURE, "df_station_atr"), on=["station_id"], how="left")
-        df_pred = pd.merge(df_pred, pd.read_pickle(DIR_FEATURE, "df_datetime_atr"), on=["datetime"], how="left")
+        df_pred = pd.merge(df_pred, pd.read_pickle(os.path.join(DIR_FEATURE, "df_station_atr.pkl")), on=["station_id"], how="left")
+        df_pred = pd.merge(df_pred, pd.read_pickle(os.path.join(DIR_FEATURE, "df_datetime_atr.pkl")), on=["datetime"], how="left")
 
         # 欠損値の削除
         df_pred = df_pred.dropna()
@@ -144,10 +145,13 @@ class model_ASMBL_demand_supply_intervention(Model):
         Args:
             data(pd.DataFrame): 学習データ[key_cols, target_col, predict, 特徴量]
         """
+        # データセット作成
         df_target = data[self.key_cols+[self.target_col]].copy()
         df_train = self.create_dataset(data)
         df_train_target = pd.merge(df_train, df_target, on=self.key_cols, how="inner")
-        va_start_date = df_train_target['datetime'].max().replace(day=1, hour=0) # 最新月の1日
+
+        # tr,vaに分割
+        va_start_date = df_train_target['datetime'].max().replace(day=1, hour=0) + relativedelta(months=-1) # 最新月の1日
         tr = df_train_target[df_train_target["datetime"] < va_start_date].copy()
         va = df_train_target[df_train_target["datetime"] >= va_start_date].copy()
         tr_x = tr.drop(columns=self.key_cols+[self.target_col])
