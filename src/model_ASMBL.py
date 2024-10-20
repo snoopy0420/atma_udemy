@@ -16,6 +16,7 @@ FIGURE_DIR_NAME = yml['SETTING']['DIR_FIGURE']
 DIR_HOME = yml['SETTING']['DIR_HOME']
 DIR_MODEL = yml['SETTING']['DIR_MODEL']
 DIR_FIGURE = yml['SETTING']['DIR_FIGURE']
+DIR_FEATURE = yml["SETTING"]["DIR_FEATURE"]
 
 # 自作モジュールの読み込み
 sys.path.append(DIR_HOME)
@@ -101,6 +102,9 @@ class model_ASMBL_demand_supply_intervention(Model):
         df_pred["date"] = df_pred["datetime"].dt.date
         df_pred = pd.merge(df_pred, data_00, on=["station_id", "date"], how="left")
         df_pred = df_pred.drop(columns=["date"])
+
+        df_pred = pd.merge(df_pred, pd.read_pickle(DIR_FEATURE, "df_station_atr"), on=["station_id"], how="left")
+        df_pred = pd.merge(df_pred, pd.read_pickle(DIR_FEATURE, "df_datetime_atr"), on=["datetime"], how="left")
 
         # 欠損値の削除
         df_pred = df_pred.dropna()
@@ -241,10 +245,11 @@ class model_ASMBL_demand_supply_intervention(Model):
             df_importance: termごとの特徴量の重要度 [feature, importance]
         """
         list_df_importance = []
-        for term in range(1, self.term_max+1):
-            model = self.models[term-1]
-            df_importance = pd.DataFrame()
-            df_importance["feature"] = model.feature_name()
-            df_importance["importance"] = model.feature_importance(importance_type='gain')
-            list_df_importance.append(df_importance)
-        return list_df_importance
+        model = self.model
+        df_importance = pd.DataFrame()
+        df_importance["feature"] = model.feature_name()
+        df_importance["importance"] = model.feature_importance(importance_type='gain')
+        list_df_importance.append(df_importance)
+        return list_df_importance*23
+
+

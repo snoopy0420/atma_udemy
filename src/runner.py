@@ -384,15 +384,15 @@ class MLModelRunner(TimeseriesModelRunner):
         model.load_model()
         df_va_pred = model.predict(va_0)
 
+        # 後処理
+        df_va_pred = self.after_pred_func(df_va_pred, self.target_col)
+
         # 正解データの作成
         df_va_true = va[va["datetime"].dt.hour!=0][self.key_cols + [self.target_col]]
 
         # バリデーションデータの評価
         df_va_pred = df_va_pred.sort_values(self.key_cols)
         df_va_true = df_va_true.sort_values(self.key_cols)
-
-        # 後処理
-        df_va_pred = self.after_pred_func(df_va_pred, self.target_col)
 
         # 欠損値補完前の目的変数がNaNの行を削除
         target_data = pd.read_pickle(os.path.join(DIR_INTERIM, "df_target_all.pkl"))[self.key_cols + [self.target_col]]

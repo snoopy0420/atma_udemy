@@ -173,7 +173,7 @@ class model_LSTM_mult(Model):
         self.model = self.LSTMModel(self.input_size, self.hidden_size, self.n_steps).to(device)
         criterion = nn.L1Loss().to(device)
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
 
         # トレーニングループ
         train_losses = []
