@@ -62,33 +62,15 @@ class model_ASMBL_demand_supply_intervention(Model):
             va_x: バリデーションデータの特徴量
             va_y: バリデーションデータの目的変数
         """      
-        # print(data)
-        # # datasetの作成
-        # X = data[data["datetime"].dt.hour==0].copy()
-        # if self.target_col in X.columns:
-        #     X = X.dropna(subset=[self.target_col])
-        # # モデル読み込み
-        # demand_model, supply_model, intervention_model = self._load_models()
-        # # 需要・供給・介入の予測
-        # # demand
-        # df_demand_pred = demand_model.predict(X)
-        # # supply
-        # df_supply_pred = supply_model.predict(X)
-        # # intervention        
-        # df_intervention_pred = intervention_model.predict(X)
-
         # モデル読み込み
         demand_model, supply_model, intervention_model = self._load_models()
         # 需要・供給・介入の予測
         # demand
         df_demand_pred = demand_model.predict_all(data)
-        print(df_demand_pred.shape)
         # supply
         df_supply_pred = supply_model.predict_all(data)
-        print(df_supply_pred.shape)
         # intervention        
         df_intervention_pred = intervention_model.predict_all(data)
-        print(df_supply_pred.shape)
 
         # 予測値
         df_pred = df_demand_pred.copy()
@@ -110,7 +92,6 @@ class model_ASMBL_demand_supply_intervention(Model):
 
         # 欠損値の削除
         df_pred = df_pred.dropna()
-        print(df_pred.shape)
 
         return df_pred.sort_values(self.key_cols)
     

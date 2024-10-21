@@ -242,6 +242,7 @@ class TimeseriesModelRunner:
 
         # fold毎の検証データの予測・評価
         for i_fold in tqdm(self.get_cv_folds()):
+            print(i_fold)
             # 評価を行う
             score, df_va_pred = self.metric_fold(i_fold)
             # 結果を保持する
@@ -379,7 +380,7 @@ class MLModelRunner(TimeseriesModelRunner):
         # データセットの準備
         _, va, _  = self.create_train_valid_dateset(i_fold)
 
-        print(va.shape)
+        # print(va.shape)
 
         # 予測値
         va_0 = va[va["datetime"].dt.hour==0]
@@ -407,6 +408,7 @@ class MLModelRunner(TimeseriesModelRunner):
         df_va_pred = df_va_pred.drop(columns=["target"])
         df_va_true = df_va_true.drop(columns=["target"])
 
+        print(df_va_true.shape, df_va_pred.shape)
         score = self.metric(df_va_true[self.target_col].values, df_va_pred[self.target_col].values)
 
         return score, df_va_pred
