@@ -321,7 +321,10 @@ class MLModelRunner(TimeseriesModelRunner):
         #     va_ = self.target_encoder.transform(va)
         #     tr = pd.merge(tr, tr_, on=self.key, how='left')
         #     va = pd.merge(va, va_, on=self.key, how='left')
-
+        if "is_trip_fillna" in tr.columns:
+            va.loc[:, "is_trip_fillna"] = 0
+            te.loc[:, "is_trip_fillna"] = 0
+            
         return tr, va, te
     
     def create_train_valid_dateset(self, i_fold: Union[int, str]):

@@ -72,6 +72,16 @@ class model_ASMBL_demand_supply_intervention(Model):
         # intervention        
         df_intervention_pred = intervention_model.predict_all(data)
 
+        # cumsumに変換
+        def calc_cumsum_from_00(df_, col):
+            df_["date"] = df_["datetime"].dt.date
+            df_[f"{col}_cumsum"] = df_.groupby(["station_id", "date"])[col].cumsum()
+            df_ = df_.drop(columns=[col, "date"])
+            return df_
+        df_demand_pred = calc_cumsum_from_00(df_demand_pred, "demand")
+        df_supply_pred = calc_cumsum_from_00(df_supply_pred, "supply")
+        df_intervention_pred = calc_cumsum_from_00(df_intervention_pred, "intervention")
+
         # 予測値
         df_pred = df_demand_pred.copy()
         df_pred = pd.merge(df_pred, df_supply_pred, on=["station_id","datetime"], how="left")
@@ -136,11 +146,17 @@ class model_ASMBL_demand_supply_intervention(Model):
         va_start_date = df_train_target['datetime'].max().replace(day=1, hour=0) + relativedelta(months=-1) # 最新月の1日
         tr = df_train_target[df_train_target["datetime"] < va_start_date].copy()
         va = df_train_target[df_train_target["datetime"] >= va_start_date].copy()
+        display(tr[tr["station_id"]==0].tail(50))
+        display(va[va["station_id"]==0].tail(50))
         tr_x = tr.drop(columns=self.key_cols+[self.target_col])
         tr_y = tr[self.target_col]
         va_x = va.drop(columns=self.key_cols+[self.target_col])
         va_y = va[self.target_col]
         print(tr_x.shape, tr_y.shape, va_x.shape, va_y.shape) 
+        display(tr_x.tail(30))
+        display(tr_y.tail(30))
+        display(va_x.tail(30))
+        display(va_y.tail(30))
         dtrain = lgb.Dataset(tr_x, tr_y)
         dvalid = lgb.Dataset(va_x, va_y)
 

@@ -205,8 +205,8 @@ class model_LGBM_multimodel(Model):
         fig, ax = plt.subplots(4, 6, figsize=(24, 16))
         for term in range(1, self.term_max+1):
             ax_ = ax[(term-1)//6][(term-1)%6]
-            ax_.plot(evals_results[term-1]['train']['l1'], label='train')
-            ax_.plot(evals_results[term-1]['eval']['l1'], label='eval')
+            ax_.plot(evals_results[term-1]['train'][self.params.get("metric")], label='train')
+            ax_.plot(evals_results[term-1]['eval'][self.params.get("metric")], label='eval')
             ax_.set_title(f'Term {term} Learning Curve')
             ax_.set_xlabel('Iterations')
             ax_.set_ylabel('L1 Loss')
