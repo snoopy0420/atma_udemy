@@ -340,7 +340,7 @@ class MLModelRunner(TimeseriesModelRunner):
             te: i_fild~i_fold+1期のテスト対象日の0時~23時のデータ
         """
         # データセットの準備
-        # ex) i_fold: 2014-09
+        # ex: i_fold: 2014-09
         # 0時のデータについて1期先のpredictの値を代入する
         data = self.df_main.copy()
         for station_id in data["station_id"].unique():

@@ -18,6 +18,7 @@ DIR_INPUT = yml["SETTING"]["DIR_INPUT"]
 SUB_DIR_NAME = yml["SETTING"]["DIR_SUBMISSION"]
 SAMPLE_SUB_NAME = yml["SETTING"]["FILE_NAME_SAMPLE_SUBMISSION"]
 TARGET = yml["SETTING"]["TARGET_COL"]
+DIR_FEATURE = yml["SETTING"]["DIR_FEATURE"] 
 
 # tensorflowとloggingのcollisionに対応
 try:
@@ -28,6 +29,8 @@ try:
     absl.logging._warn_preinit_stderr = False
 except Exception:
     pass
+
+
 
 class Util:
 
@@ -54,6 +57,11 @@ class Util:
     @classmethod
     def load_df_pickle(cls, path):
         return pd.read_pickle(path)
+    
+    @classmethod
+    def load_feature(cls, file_name):
+        file_name = file_name + ".pkl"
+        return pd.read_pickle(os.path.join(DIR_FEATURE, file_name))
 
 
 # ログ関連
