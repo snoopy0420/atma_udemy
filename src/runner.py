@@ -89,6 +89,8 @@ class TimeseriesModelRunner:
         #     va_ = self.target_encoder.transform(va)
         #     tr = pd.merge(tr, tr_, on=self.key, how='left')
         #     va = pd.merge(va, va_, on=self.key, how='left')
+        if "is_trip_fillna" in tr.columns:
+            va.loc[:, "is_trip_fillna"] = 0
 
         return tr, va
     
@@ -105,6 +107,9 @@ class TimeseriesModelRunner:
         # predictを削除
         tr = tr.drop("predict", axis=1)
         tr_va_te = tr_va_te.drop("predict", axis=1)
+
+        # データセットの分割後に行う処理
+        tr, tr_va_te = self.after_split_process(tr, tr_va_te)
 
         return tr, tr_va_te, list_va_date, list_te_date
 
@@ -324,7 +329,7 @@ class MLModelRunner(TimeseriesModelRunner):
         if "is_trip_fillna" in tr.columns:
             va.loc[:, "is_trip_fillna"] = 0
             te.loc[:, "is_trip_fillna"] = 0
-            
+
         return tr, va, te
     
     def create_train_valid_dateset(self, i_fold: Union[int, str]):
