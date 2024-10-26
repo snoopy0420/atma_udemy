@@ -247,7 +247,6 @@ class TimeseriesModelRunner:
 
         # fold毎の検証データの予測・評価
         for i_fold in tqdm(self.get_cv_folds()):
-            print(i_fold)
             # 評価を行う
             score, df_va_pred = self.metric_fold(i_fold)
             # 結果を保持する
@@ -371,11 +370,6 @@ class MLModelRunner(TimeseriesModelRunner):
         # データセットの準備
         tr, _, _ = self.create_train_valid_dateset(i_fold)
 
-        # パラメータチューニングを行う
-        # tr_tr_x, tr_tr_y, tr_va_x, tr_va_y = split(tr_x, tr_y, va_x, va_y)
-        # if self.tune_params:
-        #     self.tune_param(tr_tr_x, tr_tr_y, tr_va_x, tr_va_y)
-        
         # 学習を行う
         model = self.build_model(i_fold)
         model.train(tr)
@@ -388,13 +382,11 @@ class MLModelRunner(TimeseriesModelRunner):
         # データセットの準備
         _, va, _  = self.create_train_valid_dateset(i_fold)
 
-        # print(va.shape)
-
         # 予測値
-        va_0 = va[va["datetime"].dt.hour==0]
+        # va_0 = va[va["datetime"].dt.hour==0]
         model = self.build_model(i_fold)
         model.load_model()
-        df_va_pred = model.predict(va_0)
+        df_va_pred = model.predict(va)
 
         # 後処理
         df_va_pred = self.after_pred_func(df_va_pred, self.target_col)
@@ -416,7 +408,7 @@ class MLModelRunner(TimeseriesModelRunner):
         df_va_pred = df_va_pred.drop(columns=["target"])
         df_va_true = df_va_true.drop(columns=["target"])
 
-        print(df_va_true.shape, df_va_pred.shape)
+        # print(df_va_true.shape, df_va_pred.shape)
         score = self.metric(df_va_true[self.target_col].values, df_va_pred[self.target_col].values)
 
         return score, df_va_pred
@@ -428,10 +420,10 @@ class MLModelRunner(TimeseriesModelRunner):
         _, _, te = self.create_train_valid_dateset(i_fold)
 
         # 予測値
-        te_x = te[te["datetime"].dt.hour==0]
+        # te_x = te[te["datetime"].dt.hour==0]
         model = self.build_model(i_fold)
         model.load_model()
-        df_te_pred = model.predict(te_x)
+        df_te_pred = model.predict(te)
 
         # 後処理
         df_te_pred = self.after_pred_func(df_te_pred, self.target_col)
@@ -479,8 +471,6 @@ class MLModelRunner(TimeseriesModelRunner):
         ax1.grid(True)
         ax2.grid(False)
 
-        
-
 
     def plot_feature_importance_cv(self) -> None:
         """CVで学習した各foldのモデルの平均により、特徴量の重要度を取得する
@@ -506,35 +496,19 @@ class MLModelRunner(TimeseriesModelRunner):
         plt.close()
 
         self.logger.info(f'{self.run_name} - end plot feature importance cv')
-
-
-
-
-####### model utils ##################################################################
     
 
-    def tune_param(self, tr_x, tr_y, va_x, va_y):
+    def tune_params(self, n_trials):
         """パラメータチューニングを行う
         """
         # optunaによるパラメータ探索の実行
         # パラメータ探索の範囲
-        def objective(trial):
-            params = self.params.copy()
-            params['num_leaves'] = trial.suggest_int('num_leaves', 2, 256)
-            params['max_depth'] = trial.suggest_int('max_depth', 1, 9)
-            params['learning_rate'] = trial.suggest_float('learning_rate', 1e-8, 1.0)
-            params['subsample'] = trial.suggest_float('subsample', 1e-8, 1.0)
-            params['min_data_in_leaf'] = trial.suggest_int('min_data_in_leaf', 2, 256)
-            params['reg_alpha'] = trial.suggest_float('reg_alpha', 1e-8, 1.0)
-            params['reg_lambda'] = trial.suggest_float('reg_lambda', 1e-8, 1.0)
-            model = self.model_cls(self.run_name, params)
-            model.train(tr_x, tr_y, va_x, va_y)
-            va_pred = model.predict(va_x)
-            score = self.metrics(va_y, va_pred)
-            return score
+        
         self.logger.info(f'{self.run_name} - start tuning')
-        study = optuna.create_study(direction='maximize')
-        study.optimize(objective, n_trials=10)
-        for key, value in study.best_params.items():
-            self.params[key] = value
+
+        i_fold = datetime.strptime("2014-09-01", "%Y-%m-%d")
+        tr, _, _ = self.create_train_valid_dateset(i_fold)
+        model = self.build_model(i_fold)
+        self.params["params_term"] = model.get_tuned_params(tr, n_trials)
+
         self.logger.info(f'{self.run_name} - end tuning')

@@ -6,6 +6,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import lightgbm as lgb
 import gc
+from sklearn.metrics import mean_absolute_error
+import optuna
+from tqdm import tqdm
 
 
 # 定数の読み込み
@@ -32,6 +35,7 @@ class model_LGBM_multimodel(Model):
         self.key_cols = self.params.pop("key_cols") # list
         self.target_col = self.params.pop("target_col") # str
         self.remove_cols = self.params.pop("remove_cols") # list
+        self.base_data_name = self.params.pop("base_data_name") # 不要
         # オブジェクト
         self.models = []
         self.feat_cols = None
@@ -242,6 +246,8 @@ class model_LGBM_multi_feat(Model):
         self.key_cols = self.params.pop("key_cols") # list
         self.target_col = self.params.pop("target_col") # str
         self.remove_cols = self.params.pop("remove_cols") # list
+        self.base_data_name = self.params.pop("base_data_name") # str
+        self.params_term = self.params.pop("params_term", None) 
         # オブジェクト
         self.models = []
         self.feat_cols = None
@@ -264,11 +270,13 @@ class model_LGBM_multi_feat(Model):
             va_x: バリデーションデータの特徴量
             va_y: バリデーションデータの目的変数
         """        
-        va_start_date = data['datetime'].max().replace(day=1, hour=0) # 最新月の1日
         list_date = data["datetime"].dt.date.unique()
+        va_start_date = data['datetime'].max().replace(day=1, hour=0) # 最新月の1日
 
-        # termのデータ
-        df_term = Util.load_feature(f"df_timefeat_{self.target_col}_hour{term}")
+        # termのデータの読み込み
+        df_term = Util.load_feature(f"{self.base_data_name}{term}")
+
+        # 訓練データと検証データに分割
         tr_va = df_term[df_term["datetime"].dt.date.isin(list_date)]
         tr = tr_va[tr_va["datetime"] < va_start_date].copy()
         va = tr_va[tr_va["datetime"] >= va_start_date].copy()
@@ -319,6 +327,9 @@ class model_LGBM_multi_feat(Model):
             period = params.pop('period')
 
             # 学習
+            if self.parmas_term is not None:
+                params.update(self.parmas_term[term-1])
+
             evals_result = {}
             model = lgb.train(
                 params,
@@ -353,7 +364,8 @@ class model_LGBM_multi_feat(Model):
 
         list_df_pred = []
         for term in range(1, self.term_max+1):
-            te_term = Util.load_feature(f"df_timefeat_{self.target_col}_hour{term}")
+            # termのデータの読み込み
+            te_term = Util.load_feature(f"{self.base_data_name}{term}")
             te_term = te_term[te_term["datetime"].dt.date.isin(list_te_date)]
             model = self.models[term-1]
             te_x = te_term[model.feature_name()]
@@ -428,3 +440,61 @@ class model_LGBM_multi_feat(Model):
             df_importance["importance"] = model.feature_importance(importance_type='gain')
             list_df_importance.append(df_importance)
         return list_df_importance
+    
+    def get_tuned_params(self, data, n_trials=10):
+        """ハイパーパラメータのチューニング
+        """
+        def objective(trial):
+            params = self.params.copy()
+            num_round = params.pop('num_boost_round')
+            early_stopping_rounds = params.pop('early_stopping_rounds')
+            verbose = params.pop('verbose')
+            period = params.pop('period')
+            params['num_leaves'] = trial.suggest_int('num_leaves', 2, 256)
+            params['max_depth'] = trial.suggest_int('max_depth', 1, 9)
+            params['learning_rate'] = trial.suggest_float('learning_rate', 1e-8, 1.0)
+            params['min_data_in_leaf'] = trial.suggest_int('min_data_in_leaf', 5, 100)
+            params['min_child_weight'] = trial.suggest_int('min_child_weight', 5, 100)
+            params['reg_alpha'] = trial.suggest_float('reg_alpha', 0.0, 10.0)
+            params['reg_lambda'] = trial.suggest_float('reg_lambda', 0.0, 10.0)
+            # params['max_bin'] = trial.suggest_int('max_bin', 128, 512)
+            params['min_split_gain'] = trial.suggest_float('min_split_gain', 0.0, 1.0)
+            params['subsample'] = trial.suggest_float('subsample', 0.5, 1.0)
+            params['subsample_freq'] = trial.suggest_int('subsample_freq', 1, 10)
+            params["feature_fraction"] = trial.suggest_float("feature_fraction", 0.5, 1.0)
+            params["feature_pre_filter"] = False
+            model = lgb.train(
+                params,
+                dtrain,
+                num_round,
+                valid_sets=(dtrain, dvalid),
+                valid_names=("train", "eval"),
+                callbacks=[lgb.early_stopping(stopping_rounds=early_stopping_rounds, verbose=-1),
+                           lgb.log_evaluation(period=period)],
+            )
+            va_pred = model.predict(va_x)
+            score = mean_absolute_error(va_y, va_pred)
+
+            return score
+        
+        self.params_term = []
+        for term in tqdm(range(1, self.term_max+1)):
+            # データセットの作成
+            if term <= 6:
+                self.params_term.append({})
+            else:
+                tr_x, tr_y, va_x, va_y = self.create_dataset(data, term)
+                dtrain = lgb.Dataset(tr_x, tr_y)
+                dvalid = lgb.Dataset(va_x, va_y)
+
+                pruner = optuna.pruners.HyperbandPruner()
+                study = optuna.create_study(direction='minimize', pruner=pruner)
+                study.optimize(objective, n_trials=n_trials)
+                self.logger.info(f"term: {term}, best_score: {study.best_value}, best_params: {study.best_params}")
+                self.params_term.append(study.best_params)
+
+        return self.params_term
+    
+
+
+    
