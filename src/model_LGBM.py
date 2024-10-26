@@ -9,7 +9,7 @@ import gc
 from sklearn.metrics import mean_absolute_error
 import optuna
 from tqdm import tqdm
-
+from sklearn.model_selection import train_test_split
 
 # 定数の読み込み
 CONFIG_FILE = '../configs/config.yaml'
@@ -255,7 +255,7 @@ class model_LGBM_multi_feat(Model):
         self.term_max = 23 # 予測対象の時間範囲
         os.makedirs(self.base_dir, exist_ok=True)
 
-    def create_dataset(self, data, term):
+    def create_dataset(self, data, term, return_tr_va=False):
         """データセットの作成
         termを指定してterm期先のterget_colから正解データを作成
         train,validにデータセットを分割
@@ -292,6 +292,9 @@ class model_LGBM_multi_feat(Model):
         tr = tr.dropna(subset=[self.target_col])
         va = va.dropna(subset=[self.target_col])
 
+        if return_tr_va:
+            return tr, va
+
         # 特徴量とターゲットを分割
         tr_x = tr.drop(columns=[self.target_col]+self.key_cols+self.remove_cols)
         tr_y = tr[[self.target_col]]
@@ -313,6 +316,10 @@ class model_LGBM_multi_feat(Model):
         # 1~23期モデルを学習
         evals_results = []
         for term in range(1, self.term_max+1):
+            if term <= 6:
+                self.models.append(None)
+                evals_results.append(None)
+                continue
             # データセットの作成
             tr_x, tr_y, va_x, va_y = self.create_dataset(data, term)
             print(f"term: {term}, tr_x: {tr_x.shape}, tr_y: {tr_y.shape}, va_x: {va_x.shape}, va_y: {va_y.shape}")
@@ -327,8 +334,8 @@ class model_LGBM_multi_feat(Model):
             period = params.pop('period')
 
             # 学習
-            if self.parmas_term is not None:
-                params.update(self.parmas_term[term-1])
+            if self.params_term is not None:
+                params.update(self.params_term[term-1])
 
             evals_result = {}
             model = lgb.train(
@@ -364,12 +371,16 @@ class model_LGBM_multi_feat(Model):
 
         list_df_pred = []
         for term in range(1, self.term_max+1):
+
             # termのデータの読み込み
             te_term = Util.load_feature(f"{self.base_data_name}{term}")
             te_term = te_term[te_term["datetime"].dt.date.isin(list_te_date)]
             model = self.models[term-1]
             te_x = te_term[model.feature_name()]
-            pred = model.predict(te_x, num_iteration=model.best_iteration)
+            if model is None:
+                pred = 0
+            else:
+                pred = model.predict(te_x, num_iteration=model.best_iteration)
             df_pred = te_term[self.key_cols].copy()
             df_pred[self.target_col] = pred
             list_df_pred.append(df_pred)
@@ -412,7 +423,7 @@ class model_LGBM_multi_feat(Model):
         """
         # 23期分の学習曲線をaxを分けて描画し保存する
         fig, ax = plt.subplots(4, 6, figsize=(24, 16))
-        for term in range(1, self.term_max+1):
+        for term in range(7, self.term_max+1):
             ax_ = ax[(term-1)//6][(term-1)%6]
             ax_.plot(evals_results[term-1]['train'][self.params.get("metric")], label='train')
             ax_.plot(evals_results[term-1]['eval'][self.params.get("metric")], label='eval')
@@ -433,7 +444,7 @@ class model_LGBM_multi_feat(Model):
             df_importance: termごとの特徴量の重要度 [feature, importance]
         """
         list_df_importance = []
-        for term in range(1, self.term_max+1):
+        for term in range(7, self.term_max+1):
             model = self.models[term-1]
             df_importance = pd.DataFrame()
             df_importance["feature"] = model.feature_name()
@@ -483,7 +494,15 @@ class model_LGBM_multi_feat(Model):
             if term <= 6:
                 self.params_term.append({})
             else:
-                tr_x, tr_y, va_x, va_y = self.create_dataset(data, term)
+                tr, va = self.create_dataset(data, term, return_tr_va=True)
+                tr_va = pd.concat([tr, va], axis=0)
+                # ランダムサンプリング
+                tr, va = train_test_split(tr_va, test_size=0.2, random_state=0)
+                # 特徴量とターゲットを分割
+                tr_x = tr.drop(columns=[self.target_col]+self.key_cols+self.remove_cols)
+                tr_y = tr[[self.target_col]]
+                va_x = va.drop(columns=[self.target_col]+self.key_cols+self.remove_cols)
+                va_y = va[[self.target_col]]
                 dtrain = lgb.Dataset(tr_x, tr_y)
                 dvalid = lgb.Dataset(va_x, va_y)
 
