@@ -376,10 +376,10 @@ class model_LGBM_multi_feat(Model):
             te_term = Util.load_feature(f"{self.base_data_name}{term}")
             te_term = te_term[te_term["datetime"].dt.date.isin(list_te_date)]
             model = self.models[term-1]
-            te_x = te_term[model.feature_name()]
             if model is None:
                 pred = 0
             else:
+                te_x = te_term[model.feature_name()]
                 pred = model.predict(te_x, num_iteration=model.best_iteration)
             df_pred = te_term[self.key_cols].copy()
             df_pred[self.target_col] = pred

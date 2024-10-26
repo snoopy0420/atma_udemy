@@ -435,6 +435,7 @@ class MLModelRunner(TimeseriesModelRunner):
         """cvのterm毎の特徴量の重要度をプロットする
         """ 
         # 各foldの指定したtermの特徴量の重要度を取得
+        print(term)
         list_importance = []
         for list_df_importance in list_list_df_importance:
             importance = list_df_importance[term-1]["importance"].values
@@ -485,7 +486,7 @@ class MLModelRunner(TimeseriesModelRunner):
             list_list_df_importance.append(model.get_feature_importance())
 
         fig = plt.figure(figsize = (100, 30))
-        for term in range(1, 24):
+        for term in range(1, 18):
             ax = fig.add_subplot(1, 24, term)
             self.plot_feature_importance_term(list_list_df_importance, term, ax)
         plt.tick_params(labelsize=12) # 図のラベルのfontサイズ
