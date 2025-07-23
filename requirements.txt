@@ -13,4 +13,6 @@ optuna==3.6.1
 folium
 torch
 statsmodels
-# tensorflow
+# folium==0.17.0
+# torch==2.2.2
+# statsmodels==0.14.4

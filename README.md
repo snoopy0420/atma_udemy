@@ -1,7 +1,6 @@
 # 概要
 
-※2024/
-MUFGデータサイエンスコンペ2024
+atma cup Udemy
 
 ## 環境
 python: 3.9
