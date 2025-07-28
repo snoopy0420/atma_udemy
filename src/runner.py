@@ -252,7 +252,6 @@ class Runner:
         return df_feature_importance
 
 
-
     def plot_feature_importance_cv(self) -> None:
         """CVで学習した各foldのモデルの平均により、特徴量の重要度を取得する
         """
