@@ -9,28 +9,18 @@ import joblib
 from sklearn.metrics import mean_absolute_percentage_error
 from sklearn.model_selection import KFold, StratifiedKFold, GroupKFold
 
-
-CONFIG_FILE = '../configs/config.yaml'
-
-with open(CONFIG_FILE, encoding="utf-8") as file:
-    yml = yaml.safe_load(file)
-DIR_INPUT = yml["SETTING"]["DIR_INPUT"]
-SUB_DIR_NAME = yml["SETTING"]["DIR_SUBMISSION"]
-SAMPLE_SUB_NAME = yml["SETTING"]["FILE_NAME_SAMPLE_SUBMISSION"]
-TARGET = yml["SETTING"]["TARGET_COL"]
-DIR_FEATURE = yml["SETTING"]["DIR_FEATURE"] 
+sys.path.append(os.path.abspath('..'))
+from configs.config import *
 
 # tensorflowとloggingのcollisionに対応
-try:
-    import absl.logging
-    # https://github.com/abseil/abseil-py/issues/99
-    logging.root.removeHandler(absl.logging._absl_handler)
-    # https://github.com/abseil/abseil-py/issues/102
-    absl.logging._warn_preinit_stderr = False
-except Exception:
-    pass
-
-
+# try:
+#     import absl.logging
+#     # https://github.com/abseil/abseil-py/issues/99
+#     logging.root.removeHandler(absl.logging._absl_handler)
+#     # https://github.com/abseil/abseil-py/issues/102
+#     absl.logging._warn_preinit_stderr = False
+# except Exception:
+#     pass
 
 class Util:
 
@@ -68,11 +58,11 @@ class Util:
 class Logger:
 
     def __init__(self, path):
-        self.general_logger = logging.getLogger(path + 'general')
-        self.result_logger = logging.getLogger(path + 'result')
+        self.general_logger = logging.getLogger(os.path.join(path, 'general'))
+        self.result_logger = logging.getLogger(os.path.join(path, 'result'))
         stream_handler = logging.StreamHandler()
-        file_general_handler = logging.FileHandler(path + 'general.log')
-        file_result_handler = logging.FileHandler(path + 'result.log')
+        file_general_handler = logging.FileHandler(os.path.join(path, 'general.log'))
+        file_result_handler = logging.FileHandler(os.path.join(path, 'result.log'))
         if len(self.general_logger.handlers) == 0:
             self.general_logger.addHandler(stream_handler)
             self.general_logger.addHandler(file_general_handler)
@@ -85,7 +75,6 @@ class Logger:
     def info(self, message):
         self.general_logger.info('[{}] - {}'.format(self.now_string(), message))
 
-    
     def result(self, message):
         self.result_logger.info(message)
 
@@ -118,9 +107,9 @@ class Submission:
         logger = Logger(dir_name)
         logger.info(f'{run_name} - start create submission')
 
-        submission = pd.read_csv(DIR_INPUT + SAMPLE_SUB_NAME)
-        submission.loc[:, TARGET] = preds.iloc[:, 0]
-        submission.to_csv(SUB_DIR_NAME + f'{run_name}_submission.csv', index=False, header=True)
+        submission = pd.read_csv(os.path.join(DIR_INPUT, FILE_SAMPLE_SUBMISSION))
+        submission.loc[:, TARGET_COL] = preds.iloc[:, 0]
+        submission.to_csv(os.path.join(DIR_SUBMISSIONS, f'{run_name}_submission.csv'), index=False, header=True)
 
         logger.info(f'{run_name} - end create submission')
 
