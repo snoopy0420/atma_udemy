@@ -85,7 +85,7 @@ class model_LGBM(Model):
         """
         モデルを保存する
         """
-        path_model = os.path.join(self.base_dir, 'models.pkl')
+        path_model = os.path.join(self.base_dir, 'model.pkl')
         path_feat_cols = os.path.join(self.base_dir, 'feat_cols.pkl')
         Util.dump(self.model, path_model)
         Util.dump(self.feat_cols, path_feat_cols)
@@ -94,7 +94,7 @@ class model_LGBM(Model):
         """
         モデルを読み込む
         """
-        path_model = os.path.join(self.base_dir, 'models.pkl')
+        path_model = os.path.join(self.base_dir, 'model.pkl')
         path_feat_cols = os.path.join(self.base_dir, 'feat_cols.pkl')
         self.model = Util.load(path_model)
         self.feat_cols = Util.load(path_feat_cols)

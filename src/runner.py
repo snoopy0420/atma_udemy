@@ -184,11 +184,19 @@ class Runner:
             preds.append(df_va_pred)
         
         df_va_preds = pd.concat(preds, axis=0)
+        df_va_preds_true = pd.merge(
+            df_va_preds, self.df_train[self.key_cols + [self.target_col]], 
+            on=self.key_cols, how='left', suffixes=('_pred', '_true')
+        )
+        score_all = self.metric(
+            df_va_preds_true[self.target_col + '_true'].values, 
+            df_va_preds_true[self.target_col + '_pred'].values
+        )
 
         # 評価結果の保存
         self.logger.result(f"memo: {self.memo}")
         self.logger.result_scores(self.run_name, scores)
-        self.logger.result(f"mean: {np.mean(scores)}, std: {np.std(scores)}")
+        self.logger.result(f"all: {score_all}, mean: {np.mean(scores)}, std: {np.std(scores)}")
         self.logger.info(f"mean: {np.mean(scores)}, std: {np.std(scores)}")
         # 予測結果の保存
         path_output = os.path.join(self.out_dir_name, f'va_pred.pkl')
@@ -278,6 +286,9 @@ class Runner:
         df['coef_of_var'] = df['std'] / df['mean']
         df['coef_of_var'] = df['coef_of_var'].fillna(0)
         df = df.sort_values('mean', ascending=True)
+
+        # 100以上は表示しない
+        df = df[-100:]
 
         fig = plt.figure(figsize = (100, 30))
         ax1 = fig.add_subplot(1, 1, 1)

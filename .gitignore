@@ -31,6 +31,8 @@ notebooks/bk/*
 # !notebooks/baseline_LSTM.ipynb
 # !notebooks/baseline_LGBM.ipynb
 # !notebooks/install.ipynb
+0_sample/*
+0_sample/data
 *.gsheet
 *.bin
 *.pt
