@@ -94,6 +94,7 @@ class FeatureBase(metaclass=ABCMeta):
         # キャッシュを使う & ファイルがあるなら読み出し
         if os.path.isfile(str(file_name)) and self.use_cache:
             feature = pd.read_pickle(file_name)
+            print(decorate(f"{self.name}の特徴量をキャッシュから読み込みました。", decoration='★'))
 
         # 変換処理を実行
         else:
@@ -274,7 +275,7 @@ class UdemyActivityFeature(FeatureBase):
         df_udemy_feature = df_udemy.copy()[self.key_column].drop_duplicates()
 
         # クイズ判定
-        df_udemy["is_quiz"] = df_udemy["レクチャーもしくはクイズ"]=="Quiz"
+        # df_udemy["is_quiz"] = df_udemy["レクチャーもしくはクイズ"]=="Quiz"
 
         # 基本統計量の集計
         df_udemy_activity_numerical = df_udemy.groupby(self.key_column).agg(
@@ -296,11 +297,17 @@ class UdemyActivityFeature(FeatureBase):
             max_マーク済み修了=('マーク済み修了', 'max'),
             std_マーク済み修了=('マーク済み修了', 'std'),
             count_マーク済み修了=('マーク済み修了', 'count'),
+            # 開始日
+            min_開始日=('開始日', 'min'),
+            max_開始日=('開始日', 'max'),
         )
 
-        # 正規化の結果同じ値になったものを分別
-        map_val = {val: f'{i}_{val}' for i, val in enumerate(df_udemy['コースカテゴリー'].unique())}
-        df_udemy['コースカテゴリー'] = df_udemy['コースカテゴリー'].map(lambda x: map_val.get(x, np.nan))
+        # 学習スパン（日数）
+        df_udemy_activity_numerical["learning_span"] = (df_udemy_activity_numerical["max_開始日"] - df_udemy_activity_numerical["min_開始日"]).dt.days
+        # 日付型を数値型に変換
+        df_udemy_activity_numerical["min_開始日"] = df_udemy_activity_numerical["min_開始日"].apply(lambda x: float(datetime.strftime(x, format='%Y%m%d')))
+        df_udemy_activity_numerical["max_開始日"] = df_udemy_activity_numerical["max_開始日"].apply(lambda x: float(datetime.strftime(x, format='%Y%m%d')))
+
         # コースカテゴリごとの回数を集計
         # 正規化の結果同じ値になったものを分別
         map_val = {val: f'{i}_{val}' for i, val in enumerate(df_udemy['コースカテゴリー'].unique())}
@@ -341,25 +348,6 @@ class UdemyActivityFeature(FeatureBase):
         # prefix = "ua_コースID_"
         # df_udemy_activity_course_id.columns = [str(col[0]) if col[0]=='社員番号' else prefix + str(col[1]) for col in df_udemy_activity_course_id.columns]
 
-        # df_udemy_feature = df_udemy.groupby(self.key_column).agg(
-        #     count_コースID=('コースID', 'count'),
-        #     nunique_コースID=('コースID', 'nunique'),
-        #     nunique_コースタイトル=('コースタイトル', 'nunique'),
-        #     nunique_コースカテゴリ=('コースカテゴリー', 'nunique'),
-        #     nunique_学習日数=('開始日', pd.Series.nunique),
-        #     sum_マーク済み修了=('マーク済み修了', 'sum'),
-        #     mean_推定完了率=('推定完了率%', 'mean'),
-        #     min_開始日=('開始日', 'min'),
-        #     max_開始日=('開始日', 'max'),
-        #     rate_Quiz=('is_quiz', 'mean'),
-        # ).reset_index()
-
-        # # 学習スパン（日数）
-        # df_udemy_feature["learning_span"] = (df_udemy_feature["max_開始日"] - df_udemy_feature["min_開始日"]).dt.days
-        # # 日付型を数値型に変換
-        # df_udemy_feature["min_開始日"] = df_udemy_feature["min_開始日"].apply(lambda x: float(datetime.strftime(x, format='%Y%m%d')))
-        # df_udemy_feature["max_開始日"] = df_udemy_feature["max_開始日"].apply(lambda x: float(datetime.strftime(x, format='%Y%m%d')))
-
         # # クイズスコアの集計
         # df_quiz = df_udemy[df_udemy["is_quiz"]].copy()
         # df_quiz_stats = df_quiz.groupby(self.key_column).agg(
@@ -374,7 +362,7 @@ class UdemyActivityFeature(FeatureBase):
 
         # マージ
         df_udemy_feature = df_udemy_feature.merge(df_udemy_activity_numerical, on=self.key_column, how='left')
-        df_udemy_feature = df_udemy_feature.merge(df_udemy_activity_course_category, on=self.key_column, how='left')
+        # df_udemy_feature = df_udemy_feature.merge(df_udemy_activity_course_category, on=self.key_column, how='left')
         df_udemy_feature = df_udemy_feature.merge(df_udemy_activity_type, on=self.key_column, how='left')
 
         # カラム名の修正
@@ -719,6 +707,7 @@ class OvertimeWorkByMonthTimeseriesFeature(FeatureBase):
 
             # 今月と wヶ月前との比較（差分）
             df_worker_lag[f'hours_diff_prev_{w}'] = current_hours - df_worker_lag[f'hours_{w-1}_age']
+            # df_worker_lag[f'hours_rate_prev_{w}'] = current_hours / df_worker_lag[f'hours_{w-1}_age']
 
             # 線形トレンド（回帰直線の傾き）を算出
             trends = []
@@ -784,7 +773,7 @@ class OvertimeWorkByMonthTimeseriesFeature(FeatureBase):
 
         df_worker_lag['hours_trend_mode_6'] = df_worker_lag.apply(direction_mode, axis=1, args=(6,))
 
-        # カラムの削除
+        # lag特徴量の削除
         cols_to_drop = [f'hours_{i}_age' for i in range(0, 36)]
         df_worker_lag.drop(columns=cols_to_drop, inplace=True)
 
@@ -850,7 +839,7 @@ class PositionHistoryFeature(FeatureBase):
         prefix = "ph_役職_"
         df_position_count.columns = [col if col=='社員番号' else prefix + col for col in df_position_count.columns]
 
-        # # 特徴量例: 各社員の役職変更回数
+        # # 各社員の役職変更回数
         # df_position_history_feature = df_position_history.groupby(self.key_column).agg(
         #     position_change_count=('役職', 'nunique'),
         #     first_position=('役職', 'first'),

@@ -256,6 +256,10 @@ class Runner:
 
         # 予測
         df_feature_importance = model.get_feature_importance()
+        
+        # データセットの準備
+        # _, va = self.create_train_valid_dateset(i_fold)
+        # df_feature_importance = model.get_permutation_importance(va)
 
         return df_feature_importance
 

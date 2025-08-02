@@ -10,6 +10,8 @@ from sklearn.metrics import mean_absolute_error
 import optuna
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
+from sklearn.inspection import permutation_importance
+from lightgbm import LGBMClassifier
 
 # 自作モジュールの読み込み
 sys.path.append(os.path.abspath('..'))
@@ -128,6 +130,32 @@ class model_LGBM(Model):
         df_feature_importance["importance"] = self.model.feature_importance(importance_type='gain')
 
         return df_feature_importance
+
+    # def get_permutation_importance(self, va):
+    #     """Permutation Importanceを計算
+    #     Args:
+    #         te: 予測対象のデータ [key_cols, target_col, 特徴量]
+    #     Returns:
+    #         df_importance: 特徴量の重要度 [feature, importance]
+    #     """
+    #     cls_model = LGBMClassifier()
+    #     cls_model._Booster = self.model
+    #     cls_model._n_features = va[self.feat_cols].shape[1]
+    #     cls_model.fitted_ = True
+
+    #     print(va.shape)
+    #     print(va[self.feat_cols].shape)
+    #     print(va['target'].shape)
+    #     result = permutation_importance(cls_model, va[self.feat_cols].values, va['target'].values.ravel(), n_repeats=30, random_state=42, scoring='roc_auc')
+
+    #     df_importance = pd.DataFrame({
+    #         'feature': self.feat_cols,
+    #         'importance': result.importances_mean
+    #     })
+        
+    #     return df_importance.sort_values('importance', ascending=False)
+    
+
     
 ##############################################################################
 
