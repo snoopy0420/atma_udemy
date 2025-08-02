@@ -370,7 +370,7 @@ class UdemyActivityFeature(FeatureBase):
 
         return df_udemy_feature
 
-class UdemyEmbedding(FeatureBase):
+class UdemyTitleEmbedding(FeatureBase):
     def __init__(self, use_cache=False, save_cache=False, logger=None):
         super().__init__(use_cache=use_cache, save_cache=save_cache, logger=logger)
         self.key_column = ['社員番号']  # 主キーとなるカラムを定義
@@ -441,6 +441,76 @@ class UdemyEmbedding(FeatureBase):
 
         return df_udemy_embeddings_feature
 
+class UdemyIDEmbedding(FeatureBase):
+    def __init__(self, use_cache=False, save_cache=False, logger=None):
+        super().__init__(use_cache=use_cache, save_cache=save_cache, logger=logger)
+        self.key_column = ['社員番号']  # 主キーとなるカラムを定義
+
+    def _create_feature(self) -> pd.DataFrame:
+        """
+        Udemyのコースタイトルの埋め込み特徴量を生成します。
+
+        Returns:
+        pd.DataFrame: 生成された特徴量を含むDataFrame。
+        """
+        # 前処理済みのUdemy活動データを読み込む
+        df_udemy = pd.read_pickle(os.path.join(DIR_INTERIM, "df_prep_udemy_activity.pkl"))
+
+        df_udemy_ID_embeddings_feature = df_udemy.copy()[self.key_column].drop_duplicates()
+
+        def create_sparse_matrix(df: pd.DataFrame, user_col: str, action_col: str, value_col=None,) -> tuple[sp.csr_matrix, LabelEncoder, LabelEncoder]:
+            # user_col と action_col を数値に変更する
+            user_encoder = LabelEncoder()
+            action_encoder = LabelEncoder()
+            user_array = user_encoder.fit_transform(df[user_col].to_numpy().ravel())
+            action_array = action_encoder.fit_transform(df[action_col].to_numpy().ravel())
+
+            # 重みを指定する (value_colがNoneの場合は1を指定)
+            data_array = df[value_col].to_numpy().ravel() if value_col is not None else np.ones(len(df))
+
+            # スパース行列を作成する
+            sparse_matrix = sp.csr_matrix(
+                (data_array, (user_array, action_array)),
+                shape=(len(user_encoder.classes_), len(action_encoder.classes_)),
+            )
+            return sparse_matrix, user_encoder, action_encoder
+
+        # スパース行列を作成
+        sparse_matrix, user_encoder, action_encoder = create_sparse_matrix(df_udemy, "社員番号", "コースID")
+        # SVDで次元削減
+        n_components = 8
+        svd = TruncatedSVD(n_components=n_components, random_state=42)
+
+        # 社員番号の埋め込み
+        user_embeddings = svd.fit_transform(sparse_matrix)
+        # DFとして整形
+        df_udemy_user_embeddings = pd.concat([
+            pd.DataFrame({"社員番号": user_encoder.classes_}),
+            pd.DataFrame(user_embeddings, columns=[f'svd_コースID_{i}' for i in range(user_embeddings.shape[1])])
+        ], axis=1)
+
+        # コースタイトルの埋め込み
+        action_embeddings = svd.components_.T
+        # コースタイトル → 埋め込みマップを構築
+        course_title_to_vec = {
+            course: action_embeddings[idx]
+            for course, idx in zip(action_encoder.classes_, range(len(action_encoder.classes_)))
+        }
+        # 各社員ごとに受講コースのベクトル平均を計算
+        def compute_mean_embedding(group):
+            embeddings = [course_title_to_vec[title] for title in group['コースID'] if title in course_title_to_vec]
+            if embeddings:
+                return pd.Series(np.mean(embeddings, axis=0))
+            else:
+                return pd.Series([np.nan] * n_components)
+        df_mean_embeddings = df_udemy.groupby("社員番号").apply(compute_mean_embedding).reset_index()
+        df_mean_embeddings.columns = ["社員番号"] + [f"mean_svd_コースID_{i}" for i in range(n_components)]
+
+        # マージ
+        df_udemy_ID_embeddings_feature = df_udemy_ID_embeddings_feature.merge(df_udemy_user_embeddings, on=self.key_column, how='left')
+        df_udemy_ID_embeddings_feature = df_udemy_ID_embeddings_feature.merge(df_mean_embeddings, on=self.key_column, how='left')
+
+        return df_udemy_ID_embeddings_feature
 
 
 
