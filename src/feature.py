@@ -663,7 +663,7 @@ class OvertimeWorkByMonthTimeseriesFeature(FeatureBase):
         unique_employees = df_overtime['社員番号'].unique()
         unique_dates = df_overtime['date'].unique()
         all_combinations = pd.MultiIndex.from_product([unique_employees, unique_dates], names=['社員番号', 'date']).to_frame(index=False)
-        df_all_date_overtime = pd.merge(all_combinations, df_overtime, on=['社員番号', 'date'], how='left')
+        df_overtime = pd.merge(all_combinations, df_overtime, on=['社員番号', 'date'], how='left')
 
         # lag特徴量
         def make_worker_hours_lag_features(df_overtime, lag=35):
@@ -695,29 +695,27 @@ class OvertimeWorkByMonthTimeseriesFeature(FeatureBase):
             df_worker_lag = df_worker_lag.rename(columns={'hours': 'hours_0_age'})
 
             return df_worker_lag
-        df_worker_lag = make_worker_hours_lag_features(df_all_date_overtime, lag=35)
+        df_worker_lag = make_worker_hours_lag_features(df_overtime, lag=35)
         df_worker_lag.drop('date', axis=1, inplace=True)
-        df_worker_lag.head()
 
 
         # 移動特徴量を生成
         # 各種統計特徴量を生成するウィンドウサイズのリスト
-        windows = [2, 3, 4, 5, 6, 9, 12, 15, 18, 24, 36]
+        windows = [3, 6, 12, 24, 36]
         current_hours = df_worker_lag['hours_0_age']
-
         for w in windows:
             # 直近 w ヶ月分の hours列（hours_0_age ～ hours_{w-1}_age）
             cols = [f'hours_{i}_age' for i in range(0, w)]
 
             # 移動統計量を計算
-            df_worker_lag[f'hours_ma_{w}'] = df_worker_lag[cols].mean(axis=1)              # 平均
+            df_worker_lag[f'hours_mean_{w}'] = df_worker_lag[cols].mean(axis=1)              # 平均
             df_worker_lag[f'hours_std_{w}'] = df_worker_lag[cols].std(axis=1)              # 標準偏差
             df_worker_lag[f'hours_max_{w}'] = df_worker_lag[cols].max(axis=1)              # 最大値
             df_worker_lag[f'hours_min_{w}'] = df_worker_lag[cols].min(axis=1)              # 最小値
-            df_worker_lag[f'hours_diff_ma_{w}'] = current_hours - df_worker_lag[f'hours_ma_{w}']  # 今月と平均の差
+            df_worker_lag[f'hours_diff_mean_{w}'] = current_hours - df_worker_lag[f'hours_mean_{w}']  # 今月と平均の差
             df_worker_lag[f'hours_range_{w}'] = df_worker_lag[f'hours_max_{w}'] - df_worker_lag[f'hours_min_{w}']  # 振れ幅
             df_worker_lag[f'hours_missing_count_{w}'] = df_worker_lag[cols].isna().sum(axis=1)  # 欠損数
-            df_worker_lag[f'hours_zscore_{w}'] = (current_hours - df_worker_lag[f'hours_ma_{w}']) / (df_worker_lag[f'hours_std_{w}'] + 1e-6)  # z-score
+            df_worker_lag[f'hours_zscore_{w}'] = (current_hours - df_worker_lag[f'hours_mean_{w}']) / (df_worker_lag[f'hours_std_{w}'] + 1e-6)  # z-score
 
             # 今月と wヶ月前との比較（差分）
             df_worker_lag[f'hours_diff_prev_{w}'] = current_hours - df_worker_lag[f'hours_{w-1}_age']
@@ -736,7 +734,7 @@ class OvertimeWorkByMonthTimeseriesFeature(FeatureBase):
             df_worker_lag[f'hours_trend_{w}'] = trends
 
             # 今月が過去平均より ±30% を超えているか
-            ratio = current_hours / (df_worker_lag[f'hours_ma_{w}'] + 1e-6)
+            ratio = current_hours / (df_worker_lag[f'hours_mean_{w}'] + 1e-6)
             df_worker_lag[f'hours_over_{w}_flag'] = (ratio > 1.3).astype(int)   # 今月が30%以上多い
             df_worker_lag[f'hours_under_{w}_flag'] = (ratio < 0.7).astype(int)  # 今月が30%以上少ない
 
@@ -786,6 +784,9 @@ class OvertimeWorkByMonthTimeseriesFeature(FeatureBase):
 
         df_worker_lag['hours_trend_mode_6'] = df_worker_lag.apply(direction_mode, axis=1, args=(6,))
 
+        # カラムの削除
+        cols_to_drop = [f'hours_{i}_age' for i in range(0, 36)]
+        df_worker_lag.drop(columns=cols_to_drop, inplace=True)
 
         return df_worker_lag
 
