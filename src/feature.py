@@ -415,13 +415,26 @@ class UdemyTimeseriesFeature(FeatureBase):
 
         # 前年との受講数の差分を計算
         for i in range(0, lag):
-            df_udemy_lag[f'ua_受講数_{i}_age_diff'] = df_udemy_lag[f'ua_受講数_{i}_age'] - df_udemy_lag[f'ua_受講数_{i+1}_age']
+            df_udemy_lag[f'ua_受講数_{i}_age_ratio'] = df_udemy_lag[f'ua_受講数_{i}_age'] / df_udemy_lag[f'ua_受講数_{i+1}_age']
 
         # プラスとマイナスの受講数の差分を計算
-        cols = [f'ua_受講数_{i}_age_diff' for i in range(0, lag)]
-        df_udemy_lag['ua_受講数_0_age_diff_plus'] = df_udemy_lag[cols].apply(lambda x: len(x[x > 0]), axis=1)
-        df_udemy_lag['ua_受講数_0_age_diff_minus'] = df_udemy_lag[cols].apply(lambda x: len(x[x < 0]), axis=1)
+        ratio_cols = [f'ua_受講数_{i}_age_ratio' for i in range(0, lag)]
+        df_udemy_lag['ua_受講数_0_age_diff_plus'] = df_udemy_lag[ratio_cols].apply(lambda x: len(x[x > 1.0]), axis=1)
+        df_udemy_lag['ua_受講数_0_age_diff_minus'] = df_udemy_lag[ratio_cols].apply(lambda x: len(x[x < 1.0]), axis=1)
         
+        # # 線形トレンド（回帰直線の傾き）を算出
+        # trends = []
+        # for _, row in df_udemy_lag[lag_cols].iterrows():
+        #     y = row.values
+        #     x = np.arange(1, lag + 1)[::-1].reshape(-1, 1)
+        #     if np.isnan(y).all():
+        #         trends.append(np.nan)
+        #     else:
+        #         mask = ~np.isnan(y) # NaNを除外
+        #         reg = LinearRegression().fit(x[mask], y[mask])
+        #         trends.append(reg.coef_[0])
+        # df_udemy_lag[f'ua_受講数_trend'] = trends
+
         return df_udemy_lag
     
 
@@ -842,6 +855,7 @@ class OvertimeWorkByMonthTimeseriesFeature(FeatureBase):
             for _, row in df_worker_lag[cols].iterrows():
                 y = row.values
                 x = np.arange(1, w + 1).reshape(-1, 1)
+                # x = np.arange(1, w + 1)[::-1].reshape(-1, 1)　 # 逆順にすることで最古月が1になる
                 if np.isnan(y).all():
                     trends.append(np.nan)
                 else:
