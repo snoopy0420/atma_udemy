@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import yaml
 import joblib
-from sklearn.metrics import mean_absolute_percentage_error
+from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import KFold, StratifiedKFold, GroupKFold
 
 sys.path.append(os.path.abspath('..'))
@@ -188,12 +188,8 @@ class Metric:
         """
         今回の分析で使用する評価関数、コンペの評価指標に応じて変更する
         """
-        # 対数変換を戻す
-        y_pred = np.expm1(y_pred)
-        y_true = np.expm1(y_true)
         # スコアを計算
-        result = mean_absolute_percentage_error(y_true, y_pred)
-
+        result = roc_auc_score(y_true, y_pred)
         return result
 
     

@@ -591,6 +591,7 @@ class UdemyCategorySimilarityFeature(FeatureBase):
 
         # nan除外
         df_udemy = df_udemy[df_udemy["コースカテゴリー"].notnull()].copy()
+        df_udemy = df_udemy[df_udemy["コースカテゴリー"] != "企業オリジナル講座"].copy()
 
         # ユニークな講座カテゴリとtrainカテゴリを抽出
         unique_udemy_cats = df_udemy["コースカテゴリー"].unique().tolist()
@@ -653,6 +654,7 @@ class UdemyTitleSimilarityFeature(FeatureBase):
 
         # nan除外
         df_udemy = df_udemy[df_udemy["コースタイトル"].notnull()].copy()
+        df_udemy = df_udemy[df_udemy["コースタイトル"] != "企業オリジナル講座"].copy()
 
         # ユニークな講座タイトルとtrainカテゴリを抽出
         unique_udemy_titles = df_udemy["コースタイトル"].unique().tolist()
@@ -696,8 +698,8 @@ class UdemyTitleSimilarityFeature(FeatureBase):
                 sim_min_list.append(np.nan)
         # 結果をDataFrameに追加
         df_title_sim_feature["ua_コースタイトル_sim_mean"] = sim_mean_list
-        df_title_sim_feature["ua_コースタイトル_sim_max"] = sim_max_list
-        df_title_sim_feature["ua_コースタイトル_sim_min"] = sim_min_list
+        # df_title_sim_feature["ua_コースタイトル_sim_max"] = sim_max_list
+        # df_title_sim_feature["ua_コースタイトル_sim_min"] = sim_min_list
 
         return df_title_sim_feature
 

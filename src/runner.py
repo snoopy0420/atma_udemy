@@ -63,7 +63,7 @@ class Runner:
     def metric(self, true, pred):
         """評価指標の計算
         """
-        score = roc_auc_score(true, pred)
+        score = Metric.my_metric(true, pred)
         return score
 
 
@@ -324,4 +324,5 @@ class Runner:
         plt.close()
 
         self.logger.info(f'{self.run_name} - end plot feature importance cv')
+
 

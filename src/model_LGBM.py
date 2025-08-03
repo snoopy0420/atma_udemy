@@ -24,11 +24,11 @@ class model_LGBM(Model):
 
     def __init__(self, run_fold_name: str, params, out_dir_name, logger) -> None:
         super().__init__(run_fold_name, params, logger)
-        # カラム
+        # run params
         self.key_cols = self.params.pop("key_cols") # list
         self.target_col = self.params.pop("target_col") # str
         self.remove_cols = self.params.pop("remove_cols") # list
-        # self.base_data_name = self.params.pop("base_data_name") # 不要
+        self.tune = self.params.pop("tune") # bool
         # オブジェクト
         self.model = None
         self.feat_cols = None
@@ -47,6 +47,10 @@ class model_LGBM(Model):
         tr_x, tr_y, va_x, va_y = tr[self.feat_cols], tr[self.target_col], va[self.feat_cols], va[self.target_col]
         dtrain = lgb.Dataset(tr_x, tr_y)
         dvalid = lgb.Dataset(va_x, va_y)
+
+        # パラメータチューニング
+        if self.tune[0]:
+            self.tune_params(tr, va, n_trials=self.tune[1])
 
         # ハイパーパラメータ
         params = self.params.copy()
@@ -154,7 +158,58 @@ class model_LGBM(Model):
     #     })
         
     #     return df_importance.sort_values('importance', ascending=False)
-    
+
+    def tune_params(self, tr, va, n_trials=10):
+        """ハイパーパラメータのチューニング
+        """
+        def objective(trial):
+            params = self.params.copy()
+            num_round = params.pop('num_boost_round')
+            early_stopping_rounds = params.pop('early_stopping_rounds')
+            _ = params.pop('verbose')
+            period = params.pop('period')
+            params['max_depth'] = trial.suggest_int("max_depth", -1, 15)
+            params['num_leaves'] = trial.suggest_int("num_leaves", 2, 128)
+            params['feature_fraction'] = trial.suggest_float('feature_fraction', 0.5, 1.0)
+            params['bagging_freq'] = trial.suggest_int("bagging_freq", 0, 10)
+            params['learning_rate'] = trial.suggest_float("learning_rate", 1e-4, 0.1)
+            params['bagging_fraction'] = trial.suggest_float("bagging_fraction", 0.5, 1.0)
+            params['colsample_bytree'] = trial.suggest_float("colsample_bytree", 0.5, 1.0)
+            params['colsample_bynode'] = trial.suggest_float("colsample_bynode", 0.5, 1.0)
+            params['lambda_l1'] = trial.suggest_float("lambda_l1", 0.0, 10.0)
+            params['lambda_l2'] = trial.suggest_float("lambda_l2", 0.0, 10.0)
+            params['min_data_in_leaf'] = trial.suggest_int("min_data_in_leaf", 10, 100)
+            params["feature_pre_filter"] = False
+
+            model = lgb.train(
+                params,
+                dtrain,
+                num_round,
+                valid_sets=(dtrain, dvalid),
+                valid_names=("train", "eval"),
+                callbacks=[lgb.early_stopping(stopping_rounds=early_stopping_rounds, verbose=-1),
+                           lgb.log_evaluation(period=period)],
+                # feval=self.custum_eval, # カスタム評価関数
+                # fobj=ModelLGB.custum_loss, # カスタム目的関数
+            )
+            va_pred = model.predict(va_x)
+            score = Metric.my_metric(va_y, va_pred)
+
+            return score
+        
+        tr_x = tr[self.feat_cols]
+        tr_y = tr[[self.target_col]]
+        va_x = va[self.feat_cols]
+        va_y = va[[self.target_col]]
+        dtrain = lgb.Dataset(tr_x, tr_y)
+        dvalid = lgb.Dataset(va_x, va_y)
+
+        pruner = optuna.pruners.HyperbandPruner()
+        study = optuna.create_study(direction='maximize', pruner=pruner)
+        study.optimize(objective, n_trials=n_trials)
+        self.logger.info(f"best_score: {study.best_value}, best_params: {study.best_params}")
+        # self.paramsを更新
+        self.params.update(study.best_params)    
 
     
 ##############################################################################
