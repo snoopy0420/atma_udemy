@@ -17,3 +17,4 @@ statsmodels
 # torch==2.2.2
 # statsmodels==0.14.4
 umap-learn-0.5.9.post2
+sentence-transformers>=3.3.1
