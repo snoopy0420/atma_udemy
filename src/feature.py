@@ -440,6 +440,73 @@ class UdemyTimeseriesFeature(FeatureBase):
         return df_udemy_lag
     
 
+def create_sparse_matrix(df: pd.DataFrame, user_col: str, action_col: str, value_col=None,) -> tuple[sp.csr_matrix, LabelEncoder, LabelEncoder]:
+    # user_col と action_col を数値に変更する
+    user_encoder = LabelEncoder()
+    action_encoder = LabelEncoder()
+    user_array = user_encoder.fit_transform(df[user_col].to_numpy().ravel())
+    action_array = action_encoder.fit_transform(df[action_col].to_numpy().ravel())
+
+    # 重みを指定する (value_colがNoneの場合は1を指定)
+    data_array = df[value_col].to_numpy().ravel() if value_col is not None else np.ones(len(df))
+
+    # スパース行列を作成する
+    sparse_matrix = sp.csr_matrix(
+        (data_array, (user_array, action_array)),
+        shape=(len(user_encoder.classes_), len(action_encoder.classes_)),
+    )
+    return sparse_matrix, user_encoder, action_encoder
+
+def generate_embeddings(df: pd.DataFrame, user_col: str, action_col: str, value_col=None, n_components: int = 8, prefix: str = "") -> pd.DataFrame:
+    """
+    スパース行列を作成し、SVDで次元削減を行い、埋め込みを生成する関数
+    Args:
+        df (pd.DataFrame): 入力データフレーム
+        user_col (str): ユーザーを識別するカラム名
+        action_col (str): アクションを識別するカラム名
+        value_col (str, optional): 重みを指定するカラム名 (デフォルトはNone)
+        n_components (int): SVDでの次元数
+    Returns:
+        pd.DataFrame: ユーザーごとの埋め込み特徴量を含むデータフレーム
+    """
+    # スパース行列を作成
+    sparse_matrix, user_encoder, action_encoder = create_sparse_matrix(df, user_col, action_col, value_col)
+
+    # SVDで次元削減
+    svd = TruncatedSVD(n_components=n_components, random_state=42)
+
+    # ユーザー埋め込みを生成
+    user_embeddings = svd.fit_transform(sparse_matrix)
+    df_user_embeddings = pd.concat([
+        pd.DataFrame({user_col: user_encoder.classes_}),
+        pd.DataFrame(user_embeddings, columns=[f'{prefix}svd_{action_col}_{i}' for i in range(user_embeddings.shape[1])])
+    ], axis=1)
+
+    # アクション埋め込みを生成
+    action_embeddings = svd.components_.T
+    course_title_to_vec = {
+        course: action_embeddings[idx]
+        for course, idx in zip(action_encoder.classes_, range(len(action_encoder.classes_)))
+    }
+
+    # 各ユーザーごとのベクトル平均を計算
+    def compute_mean_embedding(group):
+        embeddings = [course_title_to_vec[title] for title in group[action_col] if title in course_title_to_vec]
+        if embeddings:
+            return pd.Series(np.mean(embeddings, axis=0))
+        else:
+            return pd.Series([np.nan] * n_components)
+
+    df_mean_embeddings = df.groupby(user_col).apply(compute_mean_embedding).reset_index()
+    df_mean_embeddings.columns = [user_col] + [f"{prefix}mean_svd_{action_col}_{i}" for i in range(n_components)]
+
+    # 埋め込みデータをマージ
+    df_embeddings = df[[user_col]].drop_duplicates().merge(df_user_embeddings, on=user_col, how='left')
+    df_embeddings = df_embeddings.merge(df_mean_embeddings, on=user_col, how='left')
+
+    return df_embeddings
+    
+
 class UdemyTitleEmbedding(FeatureBase):
     def __init__(self, use_cache=False, save_cache=False, logger=None):
         super().__init__(use_cache=use_cache, save_cache=save_cache, logger=logger)
@@ -450,62 +517,14 @@ class UdemyTitleEmbedding(FeatureBase):
         # 前処理済みのUdemy活動データを読み込む
         df_udemy = pd.read_pickle(os.path.join(DIR_INTERIM, "df_prep_udemy_activity.pkl"))
 
-        df_udemy_embeddings_feature = df_udemy.copy()[self.key_column].drop_duplicates()
-
-        def create_sparse_matrix(df: pd.DataFrame, user_col: str, action_col: str, value_col=None,) -> tuple[sp.csr_matrix, LabelEncoder, LabelEncoder]:
-            # user_col と action_col を数値に変更する
-            user_encoder = LabelEncoder()
-            action_encoder = LabelEncoder()
-            user_array = user_encoder.fit_transform(df[user_col].to_numpy().ravel())
-            action_array = action_encoder.fit_transform(df[action_col].to_numpy().ravel())
-
-            # 重みを指定する (value_colがNoneの場合は1を指定)
-            data_array = df[value_col].to_numpy().ravel() if value_col is not None else np.ones(len(df))
-
-            # スパース行列を作成する
-            sparse_matrix = sp.csr_matrix(
-                (data_array, (user_array, action_array)),
-                shape=(len(user_encoder.classes_), len(action_encoder.classes_)),
-            )
-            return sparse_matrix, user_encoder, action_encoder
-
-        # スパース行列を作成
-        sparse_matrix, user_encoder, action_encoder = create_sparse_matrix(df_udemy, "社員番号", "コースタイトル")
-        # sparse_matrix, user_encoder, action_encoder = create_sparse_matrix(df_udemy.drop_duplicates(['社員番号', "コースタイトル"]), "社員番号", "コースタイトル")
-        # SVDで次元削減
+        # スパース行列を作成し、SVDで次元削減を行い、埋め込みを生成
         n_components = 8
-        svd = TruncatedSVD(n_components=n_components, random_state=42)
+        df_udemy_user_embeddings = generate_embeddings(df_udemy,
+                                                     user_col='社員番号', 
+                                                     action_col='コースタイトル', 
+                                                     n_components=n_components)
 
-        # 社員番号の埋め込み
-        user_embeddings = svd.fit_transform(sparse_matrix)
-        # DFとして整形
-        df_udemy_user_embeddings = pd.concat([
-            pd.DataFrame({"社員番号": user_encoder.classes_}),
-            pd.DataFrame(user_embeddings, columns=[f'svd_コースタイトル_{i}' for i in range(user_embeddings.shape[1])])
-        ], axis=1)
-
-        # コースタイトルの埋め込み
-        action_embeddings = svd.components_.T
-        # コースタイトル → 埋め込みマップを構築
-        course_title_to_vec = {
-            course: action_embeddings[idx]
-            for course, idx in zip(action_encoder.classes_, range(len(action_encoder.classes_)))
-        }
-        # 各社員ごとに受講コースのベクトル平均を計算
-        def compute_mean_embedding(group):
-            embeddings = [course_title_to_vec[title] for title in group['コースタイトル'] if title in course_title_to_vec]
-            if embeddings:
-                return pd.Series(np.mean(embeddings, axis=0))
-            else:
-                return pd.Series([np.nan] * n_components)
-        df_mean_embeddings = df_udemy.groupby("社員番号").apply(compute_mean_embedding).reset_index()
-        df_mean_embeddings.columns = ["社員番号"] + [f"mean_svd_コースタイトル_{i}" for i in range(n_components)]
-
-        # マージ
-        df_udemy_embeddings_feature = df_udemy_embeddings_feature.merge(df_udemy_user_embeddings, on=self.key_column, how='left')
-        df_udemy_embeddings_feature = df_udemy_embeddings_feature.merge(df_mean_embeddings, on=self.key_column, how='left')
-
-        return df_udemy_embeddings_feature
+        return df_udemy_user_embeddings
 
 class UdemyIDEmbedding(FeatureBase):
 
@@ -518,60 +537,12 @@ class UdemyIDEmbedding(FeatureBase):
         # 前処理済みのUdemy活動データを読み込む
         df_udemy = pd.read_pickle(os.path.join(DIR_INTERIM, "df_prep_udemy_activity.pkl"))
 
-        df_udemy_ID_embeddings_feature = df_udemy.copy()[self.key_column].drop_duplicates()
-
-        def create_sparse_matrix(df: pd.DataFrame, user_col: str, action_col: str, value_col=None,) -> tuple[sp.csr_matrix, LabelEncoder, LabelEncoder]:
-            # user_col と action_col を数値に変更する
-            user_encoder = LabelEncoder()
-            action_encoder = LabelEncoder()
-            user_array = user_encoder.fit_transform(df[user_col].to_numpy().ravel())
-            action_array = action_encoder.fit_transform(df[action_col].to_numpy().ravel())
-
-            # 重みを指定する (value_colがNoneの場合は1を指定)
-            data_array = df[value_col].to_numpy().ravel() if value_col is not None else np.ones(len(df))
-
-            # スパース行列を作成する
-            sparse_matrix = sp.csr_matrix(
-                (data_array, (user_array, action_array)),
-                shape=(len(user_encoder.classes_), len(action_encoder.classes_)),
-            )
-            return sparse_matrix, user_encoder, action_encoder
-
-        # スパース行列を作成
-        sparse_matrix, user_encoder, action_encoder = create_sparse_matrix(df_udemy, "社員番号", "コースID")
-        # sparse_matrix, user_encoder, action_encoder = create_sparse_matrix(df_udemy.drop_duplicates(['社員番号',"コースID"]), "社員番号", "コースID")
-        # SVDで次元削減
+        # スパース行列を作成し、SVDで次元削減を行い、埋め込みを生成
         n_components = 8
-        svd = TruncatedSVD(n_components=n_components, random_state=42)
-
-        # 社員番号の埋め込み
-        user_embeddings = svd.fit_transform(sparse_matrix)
-        # DFとして整形
-        df_udemy_user_embeddings = pd.concat([
-            pd.DataFrame({"社員番号": user_encoder.classes_}),
-            pd.DataFrame(user_embeddings, columns=[f'svd_コースID_{i}' for i in range(user_embeddings.shape[1])])
-        ], axis=1)
-
-        # コースタイトルの埋め込み
-        action_embeddings = svd.components_.T
-        # コースタイトル → 埋め込みマップを構築
-        course_title_to_vec = {
-            course: action_embeddings[idx]
-            for course, idx in zip(action_encoder.classes_, range(len(action_encoder.classes_)))
-        }
-        # 各社員ごとに受講コースのベクトル平均を計算
-        def compute_mean_embedding(group):
-            embeddings = [course_title_to_vec[title] for title in group['コースID'] if title in course_title_to_vec]
-            if embeddings:
-                return pd.Series(np.mean(embeddings, axis=0))
-            else:
-                return pd.Series([np.nan] * n_components)
-        df_mean_embeddings = df_udemy.groupby("社員番号").apply(compute_mean_embedding).reset_index()
-        df_mean_embeddings.columns = ["社員番号"] + [f"mean_svd_コースID_{i}" for i in range(n_components)]
-
-        # マージ
-        df_udemy_ID_embeddings_feature = df_udemy_ID_embeddings_feature.merge(df_udemy_user_embeddings, on=self.key_column, how='left')
-        df_udemy_ID_embeddings_feature = df_udemy_ID_embeddings_feature.merge(df_mean_embeddings, on=self.key_column, how='left')
+        df_udemy_ID_embeddings_feature = generate_embeddings(df_udemy,
+                                                             user_col='社員番号', 
+                                                             action_col='コースID', 
+                                                             n_components=n_components)
 
         return df_udemy_ID_embeddings_feature
     
@@ -765,6 +736,46 @@ class DxFeature(FeatureBase):
         df_dx_feature = clean_feature_names(df_dx_feature)
 
         return df_dx_feature
+    
+class DxCategoryEmbeddingFeature(FeatureBase):
+    def __init__(self, use_cache=False, save_cache=False, logger=None):
+        super().__init__(use_cache=use_cache, save_cache=save_cache, logger=logger)
+        self.key_column = ['社員番号']  # 主キーとなるカラムを定義
+
+    def _create_feature(self) -> pd.DataFrame:
+
+        # 前処理済みのDXデータを読み込む
+        df_dx = pd.read_pickle(os.path.join(DIR_INTERIM, "df_prep_dx.pkl"))
+
+        # スパース行列を作成し、SVDで次元削減を行い、埋め込みを生成
+        n_components = 8
+        df_dx_category_embeddings = generate_embeddings(df_dx,
+                                                       user_col='社員番号', 
+                                                       action_col='研修カテゴリ', 
+                                                       n_components=n_components,
+                                                       prefix='dx_')
+
+        return df_dx_category_embeddings
+    
+class DxNameEmbeddingFeature(FeatureBase):
+    def __init__(self, use_cache=False, save_cache=False, logger=None):
+        super().__init__(use_cache=use_cache, save_cache=save_cache, logger=logger)
+        self.key_column = ['社員番号']  # 主キーとなるカラムを定義
+
+    def _create_feature(self) -> pd.DataFrame:
+
+        # 前処理済みのDXデータを読み込む
+        df_dx = pd.read_pickle(os.path.join(DIR_INTERIM, "df_prep_dx.pkl"))
+
+        # スパース行列を作成し、SVDで次元削減を行い、埋め込みを生成
+        n_components = 8
+        df_dx_name_embeddings = generate_embeddings(df_dx,
+                                                   user_col='社員番号', 
+                                                   action_col='研修名', 
+                                                   n_components=n_components,
+                                                   prefix='dx_')
+
+        return df_dx_name_embeddings
 
 
 class HrFeature(FeatureBase):
@@ -847,7 +858,47 @@ class HrFeature(FeatureBase):
         df_hr_feature = df_hr_feature.merge(df_name_count, on=self.key_column, how='left')
 
         return df_hr_feature
+    
+class HrCategoryEmbeddingFeature(FeatureBase):
+    def __init__(self, use_cache=False, save_cache=False, logger=None):
+        super().__init__(use_cache=use_cache, save_cache=save_cache, logger=logger)
+        self.key_column = ['社員番号']  # 主キーとなるカラムを定義
 
+    def _create_feature(self) -> pd.DataFrame:
+
+        # 前処理済みのHRデータを読み込む
+        df_hr = pd.read_pickle(os.path.join(DIR_INTERIM, "df_prep_hr.pkl"))
+
+        # スパース行列を作成し、SVDで次元削減を行い、埋め込みを生成
+        n_components = 8
+        df_hr_category_embeddings = generate_embeddings(df_hr,
+                                                       user_col='社員番号', 
+                                                       action_col='カテゴリ', 
+                                                       n_components=n_components,
+                                                       prefix='hr_')
+
+        return df_hr_category_embeddings
+
+
+class HrNameEmbeddingFeature(FeatureBase):
+    def __init__(self, use_cache=False, save_cache=False, logger=None):
+        super().__init__(use_cache=use_cache, save_cache=save_cache, logger=logger)
+        self.key_column = ['社員番号']  # 主キーとなるカラムを定義
+
+    def _create_feature(self) -> pd.DataFrame:
+
+        # 前処理済みのHRデータを読み込む
+        df_hr = pd.read_pickle(os.path.join(DIR_INTERIM, "df_prep_hr.pkl"))
+
+        # スパース行列を作成し、SVDで次元削減を行い、埋め込みを生成
+        n_components = 8
+        df_hr_name_embeddings = generate_embeddings(df_hr,
+                                                   user_col='社員番号', 
+                                                   action_col='研修名', 
+                                                   n_components=n_components,
+                                                   prefix='hr_')
+
+        return df_hr_name_embeddings
 
 class OvertimeWorkByMonthFeature(FeatureBase):
 
@@ -856,12 +907,7 @@ class OvertimeWorkByMonthFeature(FeatureBase):
         self.key_column = ['社員番号']  # 主キーとなるカラムを定義
 
     def _create_feature(self) -> pd.DataFrame:
-        """
-        残業データを読み込み、特徴量を生成します。
 
-        Returns:
-        pd.DataFrame: 生成された特徴量を含むDataFrame。
-        """
         # 残業データを読み込む
         df_overtime = pd.read_pickle(os.path.join(DIR_INTERIM, "df_prep_overtime_work_by_month.pkl"))
 
@@ -881,9 +927,7 @@ class OvertimeWorkByMonthFeature(FeatureBase):
     
     
 class OvertimeWorkByMonthTimeseriesFeature(FeatureBase):
-    """
-    OvertimeWorkByMonthTimeseriesFeatureクラスは、月ごとの残業データの時系列特徴量を生成します。
-    """
+
     def __init__(self, use_cache=False, save_cache=False, logger=None):
         super().__init__(use_cache=use_cache, save_cache=save_cache, logger=logger)
         self.key_column = ['社員番号']  # 主キーとなるカラムを定義
@@ -903,12 +947,6 @@ class OvertimeWorkByMonthTimeseriesFeature(FeatureBase):
         def make_worker_hours_lag_features(df_overtime, lag=35):
             """
             社員別の過去労働時間（lag特徴量）を作成し、最新月の1行にまとめる。
-
-            Parameters:
-                df_overtime: DataFrame
-                    '社員番号', 'date', 'hours' を含むDataFrame
-                lag: int
-                    生成する最大lag数（例：35であれば hours_1_age ～ hours_35_age）
             Returns:
                 df_worker_lag: DataFrame
                     社員番号ごとの最新行 + lag特徴量（hours_0_age ～ hours_{lag}_age）
@@ -994,6 +1032,8 @@ class OvertimeWorkByMonthTimeseriesFeature(FeatureBase):
 
         df_worker_lag['hours_spike_count'] = spike_count
 
+
+        # 過去6ヶ月の労働時間の増減方向
         def direction_mode(row, window=6):
             """
             過去 window ヶ月分の労働時間（hours_{i}_age）を比較し、
@@ -1017,7 +1057,7 @@ class OvertimeWorkByMonthTimeseriesFeature(FeatureBase):
 
             # 合計符号の sign → 全体傾向の方向
             return int(np.sign(sum(directions)))
-
+        
         df_worker_lag['hours_trend_mode_6'] = df_worker_lag.apply(direction_mode, axis=1, args=(6,))
 
         # lag特徴量の削除
@@ -1029,20 +1069,13 @@ class OvertimeWorkByMonthTimeseriesFeature(FeatureBase):
 
 
 class PositionHistoryFeature(FeatureBase):
-    """
-    PositionHistoryFeatureクラスは、役職履歴データを処理し、特徴量を生成します。
-    """
+
     def __init__(self, use_cache=False, save_cache=False, logger=None):
         super().__init__(use_cache=use_cache, save_cache=save_cache, logger=logger)
         self.key_column = ['社員番号']  # 主キーとなるカラムを定義
 
     def _create_feature(self) -> pd.DataFrame:
-        """
-        役職履歴データを読み込み、特徴量を生成します。
 
-        Returns:
-        pd.DataFrame: 生成された特徴量を含むDataFrame。
-        """
         # 役職履歴データを読み込む
         df_position_history = pd.read_pickle(os.path.join(DIR_INTERIM, "df_prep_position_history.pkl"))
 
