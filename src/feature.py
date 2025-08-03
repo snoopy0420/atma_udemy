@@ -308,6 +308,8 @@ class UdemyActivityFeature(FeatureBase):
         df_udemy_activity_numerical["min_開始日"] = df_udemy_activity_numerical["min_開始日"].apply(lambda x: float(datetime.strftime(x, format='%Y%m%d')))
         df_udemy_activity_numerical["max_開始日"] = df_udemy_activity_numerical["max_開始日"].apply(lambda x: float(datetime.strftime(x, format='%Y%m%d')))
 
+        # 
+        
         # コースカテゴリごとの回数を集計
         # 正規化の結果同じ値になったものを分別
         map_val = {val: f'{i}_{val}' for i, val in enumerate(df_udemy['コースカテゴリー'].unique())}
@@ -369,6 +371,60 @@ class UdemyActivityFeature(FeatureBase):
         df_udemy_feature = clean_feature_names(df_udemy_feature)
 
         return df_udemy_feature
+    
+
+class UdemyTimeseriesFeature(FeatureBase):
+    def __init__(self, use_cache=False, save_cache=False, logger=None):
+        super().__init__(use_cache=use_cache, save_cache=save_cache, logger=logger)
+        self.key_column = ['社員番号']  # 主キーとなるカラムを定義
+
+    def _create_feature(self) -> pd.DataFrame:
+        """
+        Udemyの時系列特徴量を生成します。
+
+        Returns:
+        pd.DataFrame: 生成された特徴量を含むDataFrame。
+        """
+        # 前処理済みのUdemy活動データを読み込む
+        df_udemy = pd.read_pickle(os.path.join(DIR_INTERIM, "df_prep_udemy_activity.pkl"))
+
+        df_udemy_target = df_udemy.copy()
+        df_udemy_target['開始年'] = df_udemy_target['開始日'].dt.to_period('Y')
+
+        # 社員番号、開始年ごとの受講数を集計して増加数を計算
+        df_udemy_target = df_udemy_target.groupby(['社員番号', '開始年']).size().reset_index(name='受講数')
+        # 社員番号、開始年のすべての組み合わせを作成
+        id = df_udemy_target['社員番号'].unique()
+        year = df_udemy_target['開始年'].unique()
+        df_udemy_target_all = pd.MultiIndex.from_product([id, year], names=['社員番号', '開始年']).to_frame(index=False)
+        df_udemy_target_all = df_udemy_target_all.merge(df_udemy_target, on=['社員番号', '開始年'], how='left')
+        # lagを計算
+        df_udemy_target_all.sort_values(['社員番号', '開始年'], inplace=True)
+        # lag特徴量を生成
+        lag=7
+        for i in range(1, lag + 1):
+            df_udemy_target_all[f'ua_受講数_{i}_age'] = df_udemy_target_all.groupby('社員番号')['受講数'].shift(i)
+
+        # 最新行を抽出
+        df_udemy_lag = df_udemy_target_all.groupby('社員番号').tail(1).reset_index(drop=True)
+
+        # カラム整形
+        lag_cols = [f'ua_受講数_{i}_age' for i in range(1, lag + 1)]
+        df_udemy_lag = df_udemy_lag[['社員番号', '受講数'] + lag_cols]
+        df_udemy_lag = df_udemy_lag.rename(columns={'受講数': 'ua_受講数_0_age'})
+
+        # 前年との受講数の差分を計算
+        for i in range(0, lag):
+            df_udemy_lag[f'ua_受講数_{i}_age_diff'] = df_udemy_lag[f'ua_受講数_{i}_age'] - df_udemy_lag[f'ua_受講数_{i+1}_age']
+
+        # プラスとマイナスの受講数の差分を計算
+        cols = [f'ua_受講数_{i}_age_diff' for i in range(0, lag)]
+        df_udemy_lag['ua_受講数_0_age_diff_plus'] = df_udemy_lag[cols].apply(lambda x: len(x[x > 0]), axis=1)
+        df_udemy_lag['ua_受講数_0_age_diff_minus'] = df_udemy_lag[cols].apply(lambda x: len(x[x < 0]), axis=1)
+        
+        return df_udemy_lag
+    
+
 
 class UdemyTitleEmbedding(FeatureBase):
     def __init__(self, use_cache=False, save_cache=False, logger=None):
@@ -406,6 +462,7 @@ class UdemyTitleEmbedding(FeatureBase):
 
         # スパース行列を作成
         sparse_matrix, user_encoder, action_encoder = create_sparse_matrix(df_udemy, "社員番号", "コースタイトル")
+        # sparse_matrix, user_encoder, action_encoder = create_sparse_matrix(df_udemy.drop_duplicates(['社員番号', "コースタイトル"]), "社員番号", "コースタイトル")
         # SVDで次元削減
         n_components = 8
         svd = TruncatedSVD(n_components=n_components, random_state=42)
@@ -477,6 +534,7 @@ class UdemyIDEmbedding(FeatureBase):
 
         # スパース行列を作成
         sparse_matrix, user_encoder, action_encoder = create_sparse_matrix(df_udemy, "社員番号", "コースID")
+        # sparse_matrix, user_encoder, action_encoder = create_sparse_matrix(df_udemy.drop_duplicates(['社員番号',"コースID"]), "社員番号", "コースID")
         # SVDで次元削減
         n_components = 8
         svd = TruncatedSVD(n_components=n_components, random_state=42)

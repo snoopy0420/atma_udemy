@@ -294,7 +294,7 @@ class Runner:
         # 100以上は表示しない
         df = df[-100:]
 
-        fig = plt.figure(figsize = (100, 30))
+        fig = plt.figure(figsize = (60, 30))
         ax1 = fig.add_subplot(1, 1, 1)
 
         # 棒グラフを出力
