@@ -548,6 +548,68 @@ class UdemyIDEmbedding(FeatureBase):
     
 
 
+def calculate_similarity_features(df_course, df_train, course_col="コースタイトル", train_col="category", model_name="hotchpotch/static-embedding-japanese", device="cpu"):
+    """
+    講座タイトルとカテゴリの類似度スコアを計算し、統計量を生成する関数。
+
+    Args:
+        df_course (pd.DataFrame): 講座データ
+        df_train (pd.DataFrame): 学習データ
+        course_col (str): 講座タイトルのカラム名
+        train_col (str): カテゴリのカラム名
+        model_name (str): 埋め込みモデルの名前
+        device (str): モデルを実行するデバイス ("cpu" または "cuda")
+
+    Returns:
+        pd.DataFrame: 類似度スコアの統計量を含む特徴量データフレーム
+    """
+    # ユニークな講座タイトルとカテゴリを抽出
+    unique_course_titles = df_course[course_col].unique().tolist()
+    unique_train_cats = df_train[train_col].unique().tolist()
+
+    # 埋め込みを取得
+    model = SentenceTransformer(model_name, device=device)
+    emb_course = model.encode(unique_course_titles, show_progress_bar=True)
+    emb_train = model.encode(unique_train_cats, show_progress_bar=True)
+
+    # 類似度行列 (カテゴリ x 講座タイトル)
+    sim_matrix = cosine_similarity(emb_train, emb_course)
+    df_sim = pd.DataFrame(sim_matrix, index=unique_train_cats, columns=unique_course_titles)
+
+    # 社員ごとの受講履歴を取得
+    # df_user_course = df_course[["社員番号", course_col]].copy()
+    df_user_course = df_course[["社員番号", course_col]].drop_duplicates().copy()
+
+    # 類似度スコアの統計量を計算
+    df_similarity_features = df_train[["社員番号", train_col]].drop_duplicates().copy()
+    sim_mean_list = []
+    sim_max_list = []
+    sim_min_list = []
+
+    for _, row in df_similarity_features.iterrows():
+        emp_id = row["社員番号"]
+        train_cat = row[train_col]
+        # その社員が受講した講座タイトル
+        learned_titles = df_user_course[df_user_course["社員番号"] == emp_id][course_col].tolist()
+        # カテゴリとの類似度を取得
+        similarities = [df_sim.loc[train_cat, title] for title in learned_titles if title in df_sim.columns]
+        # 類似度スコアの統計量を算出
+        if similarities:
+            sim_mean_list.append(np.mean(similarities))
+            sim_max_list.append(np.max(similarities))
+            sim_min_list.append(np.min(similarities))
+        else:
+            sim_mean_list.append(np.nan)
+            sim_max_list.append(np.nan)
+            sim_min_list.append(np.nan)
+
+    # 結果をDataFrameに追加
+    df_similarity_features[f"{course_col}_sim_mean"] = sim_mean_list
+    df_similarity_features[f"{course_col}_sim_max"] = sim_max_list
+    df_similarity_features[f"{course_col}_sim_min"] = sim_min_list
+
+    return df_similarity_features
+
 
 class UdemyCategorySimilarityFeature(FeatureBase):
     def __init__(self, use_cache=False, save_cache=False, logger=None):
@@ -558,6 +620,8 @@ class UdemyCategorySimilarityFeature(FeatureBase):
 
         # データ読み込み
         df_train = pd.read_pickle(os.path.join(DIR_INTERIM, "df_prep_train.pkl"))
+        df_test = pd.read_pickle(os.path.join(DIR_INTERIM, 'df_prep_test.pkl'))
+        df_all = pd.concat([df_train, df_test], ignore_index=True)
         df_udemy = pd.read_pickle(os.path.join(DIR_INTERIM, "df_prep_udemy_activity.pkl"))
 
         # nan除外
@@ -566,7 +630,7 @@ class UdemyCategorySimilarityFeature(FeatureBase):
 
         # ユニークな講座カテゴリとtrainカテゴリを抽出
         unique_udemy_cats = df_udemy["コースカテゴリー"].unique().tolist()
-        unique_train_cats = df_train["category"].unique().tolist()
+        unique_train_cats = df_all["category"].unique().tolist()
 
         # 埋め込みを取得
         model_name = "hotchpotch/static-embedding-japanese"
@@ -582,7 +646,7 @@ class UdemyCategorySimilarityFeature(FeatureBase):
         df_user_course = df_udemy[["社員番号", "コースカテゴリー"]].copy()
         # df_user_course = df_udemy[["社員番号", "コースカテゴリー"]].drop_duplicates().copy()
 
-        df_category_sim_feature = df_train[["社員番号", "category"]].drop_duplicates().copy()
+        df_category_sim_feature = df_all[["社員番号", "category"]].drop_duplicates().copy()
 
         # 類似度スコアの統計量（平均・最大など）を算出
         sim_mean_list = []
@@ -621,15 +685,17 @@ class UdemyTitleSimilarityFeature(FeatureBase):
 
         # データ読み込み
         df_train = pd.read_pickle(os.path.join(DIR_INTERIM, "df_prep_train.pkl"))
+        df_test = pd.read_pickle(os.path.join(DIR_INTERIM, "df_prep_test.pkl"))
+        df_all = pd.concat([df_train, df_test], ignore_index=True)
         df_udemy = pd.read_pickle(os.path.join(DIR_INTERIM, "df_prep_udemy_activity.pkl"))
 
         # nan除外
-        df_udemy = df_udemy[df_udemy["コースタイトル"].notnull()].copy()
-        df_udemy = df_udemy[df_udemy["コースタイトル"] != "企業オリジナル講座"].copy()
+        df_udemy = df_udemy[df_udemy["研修カテゴリ"].notnull()].copy()
+        df_udemy = df_udemy[df_udemy["研修カテゴリ"] != "企業オリジナル講座"].copy()
 
         # ユニークな講座タイトルとtrainカテゴリを抽出
         unique_udemy_titles = df_udemy["コースタイトル"].unique().tolist()
-        unique_train_cats = df_train["category"].unique().tolist()
+        unique_train_cats = df_all["category"].unique().tolist()
 
         # 埋め込みを取得
         model_name = "hotchpotch/static-embedding-japanese"
@@ -645,7 +711,7 @@ class UdemyTitleSimilarityFeature(FeatureBase):
         df_user_course = df_udemy[["社員番号", "コースタイトル"]].copy()
         # df_user_course = df_udemy[["社員番号", "コースタイトル"]].drop_duplicates().copy()
 
-        df_title_sim_feature = df_train[["社員番号", "category"]].drop_duplicates().copy()
+        df_title_sim_feature = df_all[["社員番号", "category"]].drop_duplicates().copy()
 
         # 類似度スコアの統計量（平均・最大など）を算出
         sim_mean_list = []
@@ -673,6 +739,81 @@ class UdemyTitleSimilarityFeature(FeatureBase):
         # df_title_sim_feature["ua_コースタイトル_sim_min"] = sim_min_list
 
         return df_title_sim_feature
+    
+class DxSimilarityFeature(FeatureBase):
+    def __init__(self, use_cache=False, save_cache=False, logger=None):
+        super().__init__(use_cache=use_cache, save_cache=save_cache, logger=logger)
+        self.key_column = ['社員番号', 'category']  # 主キーとなるカラムを定義
+
+    def _create_feature(self) -> pd.DataFrame:
+
+        # データ読み込み
+        df_train = pd.read_pickle(os.path.join(DIR_INTERIM, "df_prep_train.pkl"))
+        df_test = pd.read_pickle(os.path.join(DIR_INTERIM, 'df_prep_test.pkl'))
+        df_all = pd.concat([df_train, df_test], ignore_index=True)
+        df_dx = pd.read_pickle(os.path.join(DIR_INTERIM, "df_prep_dx.pkl"))
+
+        # nan除外
+        df_dx_cate = df_dx[df_dx["研修カテゴリ"].notnull()].copy()
+
+        df_cate_sim_feature = calculate_similarity_features(
+            df_course=df_dx_cate,
+            df_train=df_all,
+            course_col="研修カテゴリ",
+            train_col="category",
+        )
+
+        df_dx_title = df_dx[df_dx["研修名"].notnull()].copy()
+
+        df_title_sim_feature = calculate_similarity_features(
+            df_course=df_dx_title,
+            df_train=df_all,
+            course_col="研修名",
+            train_col="category",
+        )
+
+        df_sim_feature = df_cate_sim_feature.merge(df_title_sim_feature, on=self.key_column, how='left')
+
+        return df_sim_feature
+    
+class HrSimilarityFeature(FeatureBase):
+    def __init__(self, use_cache=False, save_cache=False, logger=None):
+        super().__init__(use_cache=use_cache, save_cache=save_cache, logger=logger)
+        self.key_column = ['社員番号', 'category']  # 主キーとなるカラムを定義
+
+    def _create_feature(self) -> pd.DataFrame:
+
+        # データ読み込み
+        df_train = pd.read_pickle(os.path.join(DIR_INTERIM, "df_prep_train.pkl"))
+        df_test = pd.read_pickle(os.path.join(DIR_INTERIM, 'df_prep_test.pkl'))
+        df_all = pd.concat([df_train, df_test], ignore_index=True)
+        df_hr = pd.read_pickle(os.path.join(DIR_INTERIM, "df_prep_hr.pkl"))
+
+        # nan除外
+        df_hr_cate = df_hr[df_hr["カテゴリ"].notnull()].copy()
+
+        df_cate_sim_feature = calculate_similarity_features(
+            df_course=df_hr_cate,
+            df_train=df_all,
+            course_col="カテゴリ",
+            train_col="category",
+        )
+
+        df_hr_title = df_hr[df_hr["研修名"].notnull()].copy()
+
+        df_title_sim_feature = calculate_similarity_features(
+            df_course=df_hr_title,
+            df_train=df_all,
+            course_col="研修名",
+            train_col="category",
+        )
+
+        df_sim_feature = df_cate_sim_feature.merge(df_title_sim_feature, on=self.key_column, how='left')
+
+        return df_sim_feature
+
+
+
 
 
 class DxFeature(FeatureBase):
@@ -1015,7 +1156,13 @@ class OvertimeWorkByMonthTimeseriesFeature(FeatureBase):
             # 指数移動平均（最近の値をより重視した平均）
             df_worker_lag[f'hours_ewm_{w}'] = df_worker_lag[cols].T.ewm(span=3, axis=0).mean().iloc[-1]
         
-        
+        # ゴールデンクロス
+        shorts = [3, 6]
+        long = 36
+        for short in shorts:
+            gc_col_name = f"hours_gc_{short}_{long}"
+            df_worker_lag[gc_col_name] = df_worker_lag[f"hours_mean_{short}"] - df_worker_lag[f"hours_mean_{long}"]
+
         # 前月との労働時間差が閾値を超えた回数
         spike_threshold = 20
         spike_count = []
