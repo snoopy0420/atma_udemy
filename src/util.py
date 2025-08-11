@@ -114,7 +114,6 @@ class Submission:
         logger.info(f'{run_name} - end create submission')
 
 
-
 class Validation:
 
     ## クロスバリデーションでのfoldを指定して対応するレコードのインデックスを返す関数
