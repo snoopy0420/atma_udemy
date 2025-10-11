@@ -1,9 +1,6 @@
 .DS_STORE
 *.DS_Store
-code/__pycache__/*
 .ipynb_checkpoints
-# code/*.ipynb
-code/Untitled.ipynb
 data/external/*
 !data/external/.gitkeep
 data/features/*
@@ -26,13 +23,10 @@ logs/*
 models/*
 !models/.gitkeep
 notebooks/bk/*
-# !notebooks/.gitkeep
-# !notebooks/EDA.ipynb
-# !notebooks/baseline_LSTM.ipynb
-# !notebooks/baseline_LGBM.ipynb
-# !notebooks/install.ipynb
-0_sample/*
-0_sample/data
 *.gsheet
 *.bin
 *.pt
+sample_code/1th_place_solution/*
+!sample_code/1th_place_solution/atmacup20-solution-discussion.ipynb
+sample_code/3th_place_solution/*
+!sample_code/3th_place_solution/takaito.ipynb
