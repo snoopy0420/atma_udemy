@@ -114,8 +114,6 @@ class Runner:
     def run_train_cv(self) -> None:
         """CVでの学習・評価を行う
         学習・評価とともに、各foldのモデルの保存、スコアのログ出力についても行う
-        12ヶ月分の学習と評価を行う
-        12ヶ月
         """
         # ログ
         self.logger.info(f'{self.run_name} - start training cv')
@@ -239,7 +237,6 @@ class Runner:
         df_te_preds = df_te_preds.sort_values(self.key_cols)
         df_te_preds[self.target_col] = np.mean(te_preds, axis=0)
 
-        
         # 予測結果の保存
         path_output = os.path.join(self.out_dir_name, f'te_pred.pkl')
         Util.dump_df_pickle(df_te_preds, path_output)

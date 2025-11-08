@@ -649,8 +649,8 @@ class UdemyTitleSimilarityFeature(FeatureBase):
         df_udemy = pd.read_pickle(os.path.join(DIR_INTERIM, "df_prep_udemy_activity.pkl"))
 
         # nan除外
-        df_udemy = df_udemy[df_udemy["研修カテゴリ"].notnull()].copy()
-        df_udemy = df_udemy[df_udemy["研修カテゴリ"] != "企業オリジナル講座"].copy()
+        df_udemy = df_udemy[df_udemy["コースタイトル"].notnull()].copy()
+        df_udemy = df_udemy[df_udemy["コースタイトル"] != "企業オリジナル講座"].copy()
 
         df_title_sim_feature = calculate_similarity_features(
             df_course=df_udemy,
