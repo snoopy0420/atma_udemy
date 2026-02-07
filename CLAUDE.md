@@ -6,37 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ATMA Cup 20 (Udemy) 機械学習コンペティションのソリューション。社員のUdemy学習活動・HR/DX研修・キャリアアンケート・残業データ・職位履歴をもとに、二値の目的変数を予測する（評価指標: ROC-AUC）。主キーは `['社員番号', 'category']`。
 
-- Python 3.9
-- 主要モデル: LightGBM
-- コード内のコメント・カラム名・ログは日本語
-
-## コマンド
-
-```bash
-# 依存関係のインストール
-pip install -r requirements.txt
-
-# ノートブックの実行
-jupyter notebook notebooks/
-```
-
-ノートブックは `notebooks/` をカレントディレクトリとして実行する前提。`sys.path.append(os.path.abspath('..'))` により `configs/` と `src/` をインポートしている。
-
-## 実行順序
-
-1. `notebooks/preprocess.ipynb` — 生データ(CSV)をクレンジング → `data/interim/` にpickle保存
-2. `notebooks/create_features.ipynb` — 特徴量を生成 → `data/features/` にpickle保存
-3. `notebooks/exp_lgbm.ipynb`（または `exp_lgbm_unv.ipynb`）— LightGBMの学習・CV評価・提出ファイル作成
+データの詳細は./data_description.mdに記載。
 
 ## アーキテクチャ
 
-### データパイプライン
+### Model-Runner-Notebookパターン
 
-```
-data/raw/input/*.csv → 前処理 → data/interim/*.pkl → 特徴量クラス → data/features/*.pkl
-                                                                        ↓
-                                                    Runner + model_LGBM → models/ + data/submission/
-```
+ロジックはsrc/配下にモジュールとして記述し実行・検証・可視化はnotebooks/配下でノートブックを作成し実行する。
+
+- **Model抽象クラス**: `src/model.py` で `train()`, `predict()`, `save_model()`, `load_model()` を定義
+- **具体的なモデル**: `src/model_resnet.py`, `src/model_arcface.py` などでModel継承
+- **Runnerクラス**: `src/runner.py` でCV管理・学習・予測・評価を一元管理
+- **Notebookで実行**: `notebooks/exp_*.ipynb` でパラメータ設定→Runner実行→分析
 
 ### 特徴量システム (`src/feature.py`)
 
@@ -46,12 +27,10 @@ data/raw/input/*.csv → 前処理 → data/interim/*.pkl → 特徴量クラス
 
 ノートブックから `create_feature()` を呼び出して使用する。各特徴量クラスは `data/interim/` のpickleを読み込み、`['社員番号', 'category']` をキーとするDataFrameを返す。
 
-特徴量クラス一覧: `Key`, `Target`, `CategoryFeature`, `CareerFeature`, `UdemyActivityFeature`, `UdemyTimeseriesFeature`, `UdemyTitleEmbedding`, `UdemyIDEmbedding`, `UdemyCategorySimilarityFeature`, `UdemyTitleSimilarityFeature`, `DxFeature`, `DxCategoryEmbeddingFeature`, `DxNameEmbeddingFeature`, `DxSimilarityFeature`, `HrFeature`, `HrCategoryEmbeddingFeature`, `HrNameEmbeddingFeature`, `HrSimilarityFeature`, `OvertimeWorkByMonthFeature`, `OvertimeWorkByMonthTimeseriesFeature`, `PositionHistoryFeature`
 
 ### モデルシステム
 
 - `src/model.py` — 抽象基底クラス `Model`。`train`, `predict`, `save_model`, `load_model` を定義
-- `src/model_LGBM.py` — `model_LGBM` 実装。key/target/removeカラムを自動除外して特徴量カラムを決定。`tune` パラメータによるOptunaハイパーパラメータチューニングに対応。モデルと特徴量カラムリストをpickle保存
 
 ### 学習パイプライン (`src/runner.py`)
 
@@ -63,21 +42,47 @@ data/raw/input/*.csv → 前処理 → data/interim/*.pkl → 特徴量クラス
 - `plot_feature_importance_cv()` → gain重要度の上位100件を変動係数とともにプロット
 - `after_split_process`（分割後のデータ変換）と `after_predict_process`（予測後の変換）フックに対応
 
-### ユーティリティ (`src/util.py`)
+### ディレクトリ構成
 
-- `Util` — シリアライズ（joblib dump/load, pickle, JSON）
-- `Logger` — コンソール + ファイルへの二重出力（`general.log`, `result.log`）、スコアはLTSV形式
-- `Metric.my_metric` — ROC-AUC（コンペの評価指標）
-- `Submission.create_submission` — 予測値から提出用CSVを生成
+```
+.
+├── README.md                     # リポジトリ全体の簡易概要
+├── requirements.txt              # 依存パッケージ
+├── configs/
+│   └── config.py                 # 設定値（定数/パス）を集中管理
+├── data/
+│   ├── raw/                      # 生データ（配布物・外部取得データ）
+│   │   └── input/                # コンペ配布の入力ファイル類
+│   ├── interim/                  # 中間生成物（フィルタ後/正規化後など）
+│   ├── features/                 # 特徴量生成結果（数値・埋め込み等）
+│   ├── figures/                  # 可視化出力（PNG/HTML等）
+│   └── submission/               # 提出用CSVの生成先
+├── logs/                         # 実行ログ（日時付きファイル推奨）
+├── models/                       # モデル/チェックポイント（必要時のみ）
+├── notebooks/                    # 実験/実行用 Notebook（パラメータ調整・可視化・実行）
+├── sample_code/                  # 参考サンプル（他人のコードなど）
+├── src/                          # ロジックを記載したPythonモジュール群
+├── tmp/                          # 検証などで利用するファイルやコード群
+├── CLAUDE.md                   　# このリポジトリの開発/運用ガイド
+└── data_discription.md           # データセットの詳細説明
+```
 
-### 設定 (`configs/config.py`)
+## コード規約
 
-パス定数（`DIR_*`）とファイル名（`FILE_NAME_*`）を定義。`os.path.abspath(os.path.dirname(os.path.abspath("")))` をホームディレクトリとして使用（`notebooks/` から実行時にプロジェクトルートに解決される）。
+### コメント
 
-## 主要な規約
+- docstringはGoogle styleで書く
+- コメントは日本語で記述する
+- コメントは#の数で階層化する。数が少ないほど上位階層となる。
 
-- 中間データはすべてpickle形式で保存
-- 特徴量DataFrameは `['社員番号', 'category']` をキーとし、重複不可
-- モデル成果物は `models/{run_name}/{run_name}_fold-{i}/` に保存
-- ログは `logs/{run_name}/` に出力
-- `sample_code/` には1位・3位の参考ソリューションを格納
+### 変数名
+
+- 以下のデータ型についてはprefixにデータ型を付与する。
+    - df_: pandas Dataframe
+    - pdf_: polars Dataframe
+    - dict_: 辞書
+    - list_: リスト
+    - set_: セット
+
+
+
