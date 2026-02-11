@@ -6,15 +6,6 @@
 # bashスクリプトの安全装置3点セット
 set -euo pipefail
 
-# git curlのインストール
-apt update 
-apt install -y git curl
-
-# gitclone
-# git clone https://github.com/snoopy0420/atma_udemy.git
-
-cd /workspace/atma_udemy/
-
 # uvのセットアップ
 ## インストール
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -24,7 +15,8 @@ export PATH=/root/.local/bin:$PATH
 export UV_CACHE_DIR=/workspace/.cache/uv
 mkdir -p /workspace/.cache/uv
 
-# パッケージのインストール
+# パッケージのインストール(不要？)
+cd /workspace/atma_udemy/
 uv sync
 
 # gitのセットアップ
