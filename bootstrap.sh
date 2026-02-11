@@ -6,8 +6,14 @@
 # bashスクリプトの安全装置3点セット
 set -euo pipefail
 
+# git curlのインストール
 apt update 
 apt install -y git curl
+
+# gitclone
+# git clone https://github.com/snoopy0420/atma_udemy.git
+
+cd /workspace/atma_udemy/
 
 # uvのセットアップ
 ## インストール
@@ -18,14 +24,10 @@ export PATH=/root/.local/bin:$PATH
 export UV_CACHE_DIR=/workspace/.cache/uv
 mkdir -p /workspace/.cache/uv
 
-cd /workspace/atma_udemy/
-
 # パッケージのインストール
-uv python install 3.12 || true
-# uv python pin 3.12
-# uv venv
 uv sync
 
 # gitのセットアップ
 git config --global user.email "runpod@example.com"
 git config --global user.name "runpod"
+nbstripout --install
