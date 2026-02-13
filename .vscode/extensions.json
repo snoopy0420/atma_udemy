@@ -1,6 +1,6 @@
 {
   "recommendations": [
-    "andrepimenta.claude-code-chat",
+    // "andrepimenta.claude-code-chat",
     "anthropic.claude-code",
     "bierner.markdown-mermaid",
     // "github.copilot",
