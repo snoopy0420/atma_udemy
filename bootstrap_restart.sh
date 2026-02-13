@@ -22,4 +22,4 @@ uv sync
 # gitのセットアップ
 git config --global user.email "runpod@example.com"
 git config --global user.name "runpod"
-nbstripout --install
+uv run nbstripout --install
