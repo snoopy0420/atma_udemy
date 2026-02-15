@@ -15,7 +15,7 @@ export PATH=/root/.local/bin:$PATH
 export UV_CACHE_DIR=/workspace/.cache/uv
 mkdir -p /workspace/.cache/uv
 
-# パッケージのインストール(不要？)
+# パッケージのインストール
 cd /workspace/atma_udemy/
 uv sync
 
